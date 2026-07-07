@@ -6,6 +6,7 @@
   "license": "GPL-3.0-or-later",
   "author": {
     "name": "Beacon Launcher",
+    "email": "beacon-launcher@users.noreply.github.com",
     "url": "https://github.com/beacon-launcher"
   },
   "homepage": "https://github.com/beacon-launcher/launcher",

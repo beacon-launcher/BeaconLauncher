@@ -43,4 +43,6 @@ jobs:
         env:
           # Provided automatically by Actions; lets electron-builder upload to the Release.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unsigned build — stop electron-builder from hunting for a macOS signing cert.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run ${{ matrix.script }} -- --publish always
