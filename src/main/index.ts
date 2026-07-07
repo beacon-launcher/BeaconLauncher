@@ -5,7 +5,8 @@ import { totalmem } from 'node:os'
 import type { ChildProcess } from 'node:child_process'
 import './net' // sets a tuned global undici dispatcher for the main process's Modrinth fetches
 import * as store from './store'
-import { listVersions, launchGame } from './game'
+import * as auth from './auth'
+import { listVersions, launchGame, type LaunchAccount } from './game'
 import { detectJava } from './java'
 import * as installer from './installer'
 import * as loaders from './loaders'
@@ -146,6 +147,50 @@ ipcMain.handle('settings:set', (_e, s: store.Settings) => {
   return true
 })
 
+// ── accounts (offline nicknames + Microsoft / licensed sign-in) ───────────────
+// Expose only the public parts (id/name/type/active) — never the tokens.
+function publicAccounts(): { accounts: { id: string; name: string; type: string }[]; activeId: string | null } {
+  const s = store.getAccounts()
+  return { accounts: s.accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })), activeId: s.activeId }
+}
+ipcMain.handle('auth:list', () => publicAccounts())
+ipcMain.handle('auth:signIn', async () => {
+  try {
+    const account = await auth.signIn(win)
+    store.upsertAccount(account) // adds (or refreshes) and makes it active
+    const list = publicAccounts()
+    send('authChanged', list)
+    return { ok: true, list }
+  } catch (e) {
+    const m = errMsg(e)
+    return { ok: false, error: m === 'cancelled' ? 'cancelled' : m }
+  }
+})
+ipcMain.handle('auth:addOffline', (_e, name: string) => {
+  store.addOfflineAccount(name)
+  const list = publicAccounts()
+  send('authChanged', list)
+  return list
+})
+ipcMain.handle('auth:rename', (_e, a: { id: string; name: string }) => {
+  store.renameAccount(a.id, a.name)
+  const list = publicAccounts()
+  send('authChanged', list)
+  return list
+})
+ipcMain.handle('auth:setActive', (_e, id: string | null) => {
+  store.setActiveAccount(id)
+  const list = publicAccounts()
+  send('authChanged', list)
+  return list
+})
+ipcMain.handle('auth:remove', (_e, id: string) => {
+  store.removeAccount(id)
+  const list = publicAccounts()
+  send('authChanged', list)
+  return list
+})
+
 // ── profiles ──────────────────────────────────────────────────────────────
 ipcMain.handle('profiles:list', () => store.getProfiles())
 ipcMain.handle('profiles:add', (_e, a: { name: string; mcVersion: string; loader: store.Loader; loaderVersion?: string; avatarSrc?: string }) => {
@@ -258,8 +303,32 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
       store.setInstallResult(profile.id, ready.versionId, ready.java)
     }
 
+    // Licensed sign-in: refresh the token (silently) right before launch so the game gets a
+    // valid session. If the session can't be renewed the account is stale — sign out and stop,
+    // rather than silently dropping to an offline session the user didn't ask for.
+    let account: LaunchAccount | null = null
+    const active = store.getActiveAccount()
+    if (active?.type === 'msa') {
+      try {
+        const fresh = await auth.ensureValid(active)
+        store.updateAccount(fresh)
+        account = { name: fresh.name, licensed: true, uuid: fresh.id, accessToken: fresh.mcToken }
+      } catch (e) {
+        // Session can't be renewed (revoked/expired) — drop this account and stop, rather than
+        // silently launching offline under a name the user thinks is licensed.
+        store.removeAccount(active.id)
+        send('authChanged', publicAccounts())
+        const m = errMsg(e)
+        pstate(profile.id, 'idle', 0, '')
+        send('toast', { text: `Please sign in again — ${m}` })
+        return { ok: false, error: m }
+      }
+    } else if (active?.type === 'offline') {
+      account = { name: active.name, licensed: false }
+    }
+
     pstate(profile.id, 'launching', 100, 'Launching…')
-    child = await launchGame({ ...ready, settings })
+    child = await launchGame({ ...ready, settings, account })
     const startedAt = Date.now()
     pstate(profile.id, 'running', 100, 'Running')
     // Discord shows the profile only while it's actually running (Idling otherwise).

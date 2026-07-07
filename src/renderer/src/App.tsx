@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ContentItem, ContentType, Loader, ModHit, Profile, ProjectDetail, Settings } from './types'
+import type { Account, AccountsState, ContentItem, ContentType, Loader, ModHit, Profile, ProjectDetail, Settings } from './types'
 
 const RANDOM_WORDS = ['Craft', 'Pixel', 'Diamond', 'Creeper', 'Ender', 'Shadow', 'Nova', 'Blaze', 'Frost', 'Turbo', 'Ghost', 'Miner', 'Wolf', 'Fox', 'Storm', 'Titan', 'Cyber', 'Neon', 'Lunar', 'Solar', 'Void', 'Rogue']
 
@@ -116,6 +116,13 @@ export default function App(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  // All accounts (offline nicknames + licensed Microsoft) and which is active. Managed from the
+  // accounts modal opened via the top bar.
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [showAccounts, setShowAccounts] = useState(false)
+  const [signingIn, setSigningIn] = useState(false) // true while the Microsoft popup is open
+  const activeAccount = accounts.find((a) => a.id === activeId) ?? null
   const [phase, setPhase] = useState<Phase>('idle')
   const [status, setStatus] = useState('Ready')
   const [percent, setPercent] = useState<number | null>(null)
@@ -236,6 +243,14 @@ export default function App(): React.JSX.Element {
       setNav({ list: [null], idx: 0 })
     })
     window.beacon.getSettings().then(setSettings)
+    const applyAccounts = (s: AccountsState): void => {
+      setAccounts(s.accounts)
+      setActiveId(s.activeId)
+    }
+    window.beacon.listAccounts().then(applyAccounts)
+    // authChanged fires on add/switch/remove AND when the main process drops a stale session at
+    // launch time — keep the UI in sync either way.
+    const offAuthChanged = window.beacon.onAuthChanged(applyAccounts)
     // Mouse back/forward buttons navigate the view history.
     const onMouse = (e: MouseEvent): void => {
       if (e.button === 3) {
@@ -281,14 +296,29 @@ export default function App(): React.JSX.Element {
       offPState()
       offProfilesChanged()
       offUpdate()
+      offAuthChanged()
       window.removeEventListener('mouseup', onMouse)
     }
   }, [])
 
-  // Apply the accent colour as a CSS variable whenever it changes.
+  // Apply the accent colour. The default (#ffffff) is left to CSS so it can flip per theme
+  // (white on dark, dark on light); any custom colour is forced via an inline override.
   useEffect(() => {
-    if (settings?.accentColor) document.documentElement.style.setProperty('--accent', settings.accentColor)
+    const root = document.documentElement
+    const c = (settings?.accentColor || '#ffffff').toLowerCase()
+    if (c === '#ffffff') {
+      root.style.removeProperty('--accent')
+      root.style.removeProperty('--on-accent')
+    } else {
+      root.style.setProperty('--accent', settings!.accentColor)
+      root.style.setProperty('--on-accent', '#0a0a0b')
+    }
   }, [settings?.accentColor])
+
+  // Apply the colour theme. 'system' follows the OS via @media in CSS; 'dark'/'light' force it.
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings?.theme ?? 'system'
+  }, [settings?.theme])
 
   useEffect(() => {
     if (settings) window.beacon.discordEnabled(settings.discordRpc !== false)
@@ -357,6 +387,32 @@ export default function App(): React.JSX.Element {
     window.beacon.saveSettings(s)
   }
 
+  const applyAccounts = (s: AccountsState): void => {
+    setAccounts(s.accounts)
+    setActiveId(s.activeId)
+  }
+  // Open the Microsoft login popup (main process). Resolves when the whole chain finishes.
+  const addAccount = async (): Promise<void> => {
+    if (signingIn) return
+    setSigningIn(true)
+    const r = await window.beacon.signIn()
+    setSigningIn(false)
+    if (r.ok && r.list) applyAccounts(r.list)
+    else if (r.error && r.error !== 'cancelled') setToast(r.error)
+  }
+  const addOfflineAccount = async (name: string): Promise<void> => {
+    applyAccounts(await window.beacon.addOfflineAccount(name))
+  }
+  const renameAccount = async (id: string, name: string): Promise<void> => {
+    applyAccounts(await window.beacon.renameAccount(id, name))
+  }
+  const switchAccount = async (id: string | null): Promise<void> => {
+    applyAccounts(await window.beacon.setActiveAccount(id))
+  }
+  const removeAccount = async (id: string): Promise<void> => {
+    applyAccounts(await window.beacon.removeAccount(id))
+  }
+
   const play = async (): Promise<void> => {
     if (!selected) return
     const r = await window.beacon.launch(selected.id)
@@ -415,39 +471,19 @@ export default function App(): React.JSX.Element {
 
         <div className="th-center">
           <div className="nick-wrap">
-            <input
-              className="nick-input"
-              value={settings?.username ?? ''}
-              maxLength={16}
-              placeholder="Enter your username…"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-              }}
-              onChange={(e) => {
-                if (!settings) return
-                saveSettings({ ...settings, username: e.target.value.replace(/[^A-Za-z0-9_]/g, '') })
-              }}
-            />
-            {runningProfile ? (
-              <button className={`dice ${showLog ? 'on' : ''}`} title="Toggle console" onClick={() => setShowLog((v) => !v)}>
+            {/* Long identity bar — just the centered nickname + chevron. The account type
+                (Microsoft / Offline) is shown inside the accounts switcher. */}
+            <button className="nick-bar" onClick={() => setShowAccounts(true)} data-tip="Accounts">
+              <span className="nick-name">{activeAccount?.name ?? settings?.username ?? 'Player'}</span>
+              <svg className="nick-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {runningProfile && (
+              <button className={`dice ${showLog ? 'on' : ''}`} data-tip="Toggle console" onClick={() => setShowLog((v) => !v)}>
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <rect x="3" y="4" width="18" height="16" rx="2.5" />
                   <path d="M7 9l3 3-3 3M13 15h4" />
-                </svg>
-              </button>
-            ) : (
-              <button
-                className="dice"
-                title="Random username"
-                onClick={() => settings && saveSettings({ ...settings, username: randomUsername() })}
-              >
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                  <rect x="3" y="3" width="18" height="18" rx="4.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                  <circle cx="8" cy="8" r="1.4" />
-                  <circle cx="16" cy="8" r="1.4" />
-                  <circle cx="12" cy="12" r="1.4" />
-                  <circle cx="8" cy="16" r="1.4" />
-                  <circle cx="16" cy="16" r="1.4" />
                 </svg>
               </button>
             )}
@@ -559,7 +595,7 @@ export default function App(): React.JSX.Element {
           <button
             className={`import-btn ${packDragOver ? 'dragover' : ''}`}
             onClick={importPack}
-            title="Import a .mrpack modpack — or drop one here"
+            data-tip="Import a .mrpack modpack — or drop one here"
             onDragOver={(e) => {
               if (Array.from(e.dataTransfer.types).includes('Files')) {
                 e.preventDefault()
@@ -579,14 +615,14 @@ export default function App(): React.JSX.Element {
           </button>
 
           <div className="side-foot">
-            <button className="new" onClick={() => setCreating(true)} title="New profile">
+            <button className="new" onClick={() => setCreating(true)} data-tip="New profile">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
               <span className="lbl">New profile</span>
             </button>
-            <button className="gear" onClick={() => { setShowLog(false); setShowSettings(true) }} title="Settings">
+            <button className="gear" onClick={() => { setShowLog(false); setShowSettings(true) }} data-tip="Settings">
               <GearIcon />
             </button>
           </div>
@@ -695,7 +731,7 @@ export default function App(): React.JSX.Element {
       )}
 
       {toast && (
-        <div className="toast" onClick={copyToast} title="Click to copy">
+        <div className="toast" onClick={copyToast} data-tip="Click to copy">
           <button
             className="toast-x"
             aria-label="Dismiss"
@@ -738,7 +774,210 @@ export default function App(): React.JSX.Element {
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {showAccounts && (
+        <AccountsModal
+          accounts={accounts}
+          activeId={activeId}
+          signingIn={signingIn}
+          onSelect={switchAccount}
+          onAddMicrosoft={addAccount}
+          onAddOffline={addOfflineAccount}
+          onRename={renameAccount}
+          onRemove={removeAccount}
+          onClose={() => setShowAccounts(false)}
+        />
+      )}
+
+      <Tooltip />
     </div>
+  )
+}
+
+// Minimalist custom tooltip. Any element with a `data-tip` attribute shows it on hover; a single
+// fixed-position node (body-level) is reused, so it never clips inside scroll containers.
+function Tooltip(): React.JSX.Element | null {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; below: boolean } | null>(null)
+  const elRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const target = (e: Event): HTMLElement | null =>
+      (e.target instanceof Element ? e.target.closest('[data-tip]') : null) as HTMLElement | null
+    const hide = (): void => {
+      elRef.current = null
+      setTip(null)
+    }
+    const show = (el: HTMLElement): void => {
+      const text = el.getAttribute('data-tip')
+      if (!text) return
+      const r = el.getBoundingClientRect()
+      // Adaptive: prefer above, but drop below when there isn't room above the target.
+      const below = r.top < 44
+      elRef.current = el
+      const x = Math.min(Math.max(r.left + r.width / 2, 56), window.innerWidth - 56)
+      setTip({ text, x: Math.round(x), y: Math.round(below ? r.bottom : r.top), below })
+    }
+    const onOver = (e: MouseEvent): void => {
+      const el = target(e)
+      if (el) show(el)
+    }
+    const onOut = (e: MouseEvent): void => {
+      if (target(e)) hide()
+    }
+    document.addEventListener('mouseover', onOver)
+    document.addEventListener('mouseout', onOut)
+    // Any click, or a scroll, dismisses — and covers the case where the hovered element is
+    // removed from the DOM (e.g. deleting an account) so no mouseout ever fires.
+    document.addEventListener('mousedown', hide, true)
+    document.addEventListener('scroll', hide, true)
+    // Safety net: if the anchored element is gone, drop the tooltip.
+    const iv = setInterval(() => {
+      if (elRef.current && !elRef.current.isConnected) hide()
+    }, 200)
+    return () => {
+      document.removeEventListener('mouseover', onOver)
+      document.removeEventListener('mouseout', onOut)
+      document.removeEventListener('mousedown', hide, true)
+      document.removeEventListener('scroll', hide, true)
+      clearInterval(iv)
+    }
+  }, [])
+  if (!tip) return null
+  return (
+    <div className={`tooltip ${tip.below ? 'below' : ''}`} style={{ left: tip.x, top: tip.y }}>
+      {tip.text}
+    </div>
+  )
+}
+
+// Account switcher, opened from the top bar. Lists every account (offline nicknames + licensed
+// Microsoft) and lets the user switch active, rename/remove, or add more of either kind.
+function AccountsModal({
+  accounts,
+  activeId,
+  signingIn,
+  onSelect,
+  onAddMicrosoft,
+  onAddOffline,
+  onRename,
+  onRemove,
+  onClose
+}: {
+  accounts: Account[]
+  activeId: string | null
+  signingIn: boolean
+  onSelect: (id: string) => void
+  onAddMicrosoft: () => void
+  onAddOffline: (name: string) => void
+  onRename: (id: string, name: string) => void
+  onRemove: (id: string) => void
+  onClose: () => void
+}): React.JSX.Element {
+  const [newNick, setNewNick] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const addOffline = (): void => {
+    const n = newNick.trim()
+    if (!n) return
+    onAddOffline(n)
+    setNewNick('')
+  }
+  return (
+    <Modal title="Accounts" onClose={onClose}>
+      <div className="accounts">
+        {/* Add section — pinned at the top; only the account list below scrolls. */}
+        <div className="acc-add-section">
+          <div className="acc-add-field">
+            <input
+              className="acc-add-input"
+              value={newNick}
+              maxLength={16}
+              placeholder="New offline nickname…"
+              onChange={(e) => setNewNick(e.target.value.replace(/[^A-Za-z0-9_]/g, ''))}
+              onKeyDown={(e) => e.key === 'Enter' && addOffline()}
+            />
+            <button className="in-icon" data-tip="Random nickname" onClick={() => setNewNick(randomUsername())}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="4.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                <circle cx="8" cy="8" r="1.4" />
+                <circle cx="16" cy="8" r="1.4" />
+                <circle cx="12" cy="12" r="1.4" />
+                <circle cx="8" cy="16" r="1.4" />
+                <circle cx="16" cy="16" r="1.4" />
+              </svg>
+            </button>
+          </div>
+          <button className="add-btn" onClick={addOffline} disabled={!newNick.trim()}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add offline account
+          </button>
+          <button className="add-btn ms" onClick={onAddMicrosoft} disabled={signingIn}>
+            {signingIn ? (
+              <>
+                <Spinner /> Waiting for Microsoft…
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <rect x="3" y="3" width="8" height="8" fill="#f25022" />
+                  <rect x="13" y="3" width="8" height="8" fill="#7fba00" />
+                  <rect x="3" y="13" width="8" height="8" fill="#00a4ef" />
+                  <rect x="13" y="13" width="8" height="8" fill="#ffb900" />
+                </svg>
+                Add Microsoft account
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="acc-list">
+          {accounts.map((a) => {
+            const licensed = a.type === 'msa'
+            const editing = editingId === a.id
+            const active = activeId === a.id
+            return (
+              <div key={a.id} className={`acc-row ${active ? 'active' : ''}`}>
+                <button className="acc-pick" onClick={() => onSelect(a.id)}>
+                  <span className="acc-meta">
+                    {editing ? (
+                      <input
+                        className="acc-name-input"
+                        autoFocus
+                        value={a.name}
+                        maxLength={16}
+                        placeholder="Nickname…"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => onRename(a.id, e.target.value.replace(/[^A-Za-z0-9_]/g, ''))}
+                        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                        onBlur={() => setEditingId(null)}
+                      />
+                    ) : (
+                      <span className="acc-name">{a.name}</span>
+                    )}
+                    <span className="acc-sub">{licensed ? 'Microsoft' : 'Offline'}</span>
+                  </span>
+                </button>
+                <div className="acc-actions">
+                  {!licensed && (
+                    <button className="plain-icon" data-tip="Rename" onClick={() => setEditingId(editing ? null : a.id)}>
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                      </svg>
+                    </button>
+                  )}
+                  <button className="plain-icon danger" data-tip="Remove" onClick={() => onRemove(a.id)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -809,7 +1048,7 @@ function ProfileView({
           ) : (
             <h1 className="tb-name">
               {profile.name}
-              <button className="tb-edit" title="Rename profile" onClick={startEdit}>
+              <button className="tb-edit" data-tip="Rename profile" onClick={startEdit}>
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -827,7 +1066,7 @@ function ProfileView({
             Folder
           </button>
           {status === 'installing' ? (
-            <button className="play installing" onClick={onCancel} title="Cancel install">
+            <button className="play installing" onClick={onCancel} data-tip="Cancel install">
               Installing {pct}% <span className="btn-x">✕</span>
             </button>
           ) : status === 'launching' ? (
@@ -839,7 +1078,7 @@ function ProfileView({
               Stop
             </button>
           ) : (
-            <button className="play" onClick={onPlay} disabled={blocked} title={blocked ? 'Stop the running game first' : undefined}>
+            <button className="play" onClick={onPlay} disabled={blocked} data-tip={blocked ? "Stop the running game first" : undefined}>
               Play
             </button>
           )}
@@ -883,7 +1122,7 @@ function InstallsPanel({
             </div>
             <span className="install-detail">{it.text || 'Installing…'}</span>
           </div>
-          <button className="install-cancel" title="Cancel install" onClick={() => onCancel(it.id)}>
+          <button className="install-cancel" data-tip="Cancel install" onClick={() => onCancel(it.id)}>
             ✕
           </button>
         </div>
@@ -1389,7 +1628,7 @@ const ModsPanel = memo(function ModsPanel({
                       {(update || isUpdating) && (
                         <button
                           className="crow-update"
-                          title={update ? `Update to ${update}` : 'Updating…'}
+                          data-tip={update ? `Update to ${update}` : "Updating…"}
                           disabled={isUpdating}
                           onClick={() => doUpdate(it.name)}
                         >
@@ -1407,7 +1646,7 @@ const ModsPanel = memo(function ModsPanel({
                   <div className="crow-actions">
                     <button
                       className={`toggle ${it.enabled ? 'on' : ''}`}
-                      title={it.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}
+                      data-tip={it.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}
                       onClick={async () => {
                         await window.beacon.toggleContent(profile.id, type, it.name, !it.enabled)
                         refreshItems()
@@ -1417,7 +1656,7 @@ const ModsPanel = memo(function ModsPanel({
                     </button>
                     <button
                       className="crow-del"
-                      title="Delete"
+                      data-tip="Delete"
                       onClick={async () => {
                         await window.beacon.removeContent(profile.id, type, it.name)
                         refreshItems()
@@ -1429,7 +1668,7 @@ const ModsPanel = memo(function ModsPanel({
                     </button>
                     <button
                       className="crow-more"
-                      title="More"
+                      data-tip="More"
                       onClick={(e) => {
                         e.stopPropagation()
                         setRowMenu((cur) => (cur === it.name ? null : it.name))
@@ -1698,12 +1937,54 @@ function SettingsModal({
   const patch = (p: Partial<Settings>): void => onChange({ ...settings, ...p })
   const mem = Math.min(settings.maxMemory, maxRam)
   const memPct = maxRam > 1024 ? ((mem - 1024) / (maxRam - 1024)) * 100 : 0
+  const theme = settings.theme ?? 'system'
   const [pickerOpen, setPickerOpen] = useState(false)
-  // "Custom" is active when the accent isn't one of the named presets.
-  const isCustom = !ACCENTS.some((a) => a.color.toLowerCase() === settings.accentColor.toLowerCase())
+  // "Custom" stays selected while the user is in the custom picker — even if the colour equals a
+  // preset — so it's tracked separately from the colour value (and persisted across opens).
+  const presetOn = (c: string): boolean => ACCENTS.some((a) => a.color.toLowerCase() === c.toLowerCase())
+  const [isCustom, setIsCustomState] = useState(() => localStorage.getItem('beacon.accentCustom') === '1' || !presetOn(settings.accentColor))
+  const setCustom = (on: boolean): void => {
+    setIsCustomState(on)
+    localStorage.setItem('beacon.accentCustom', on ? '1' : '0')
+  }
+  const pickPreset = (color: string): void => {
+    setCustom(false)
+    patch({ accentColor: color })
+  }
+  // Let the memory field be temporarily empty while typing instead of snapping to 0.
+  const [memText, setMemText] = useState<string | null>(null)
   return (
     <Modal title="Settings" onClose={onClose} wide>
       <div className="settings">
+        <div className="set-row">
+          <div className="set-head">
+            <span className="set-title">Theme</span>
+            <span className="set-sub">Follow the system, or force dark / light</span>
+          </div>
+          <div className="theme-grid">
+            {(['system', 'dark', 'light'] as const).map((t) => (
+              <button key={t} className={`theme-card ${theme === t ? 'on' : ''}`} onClick={() => patch({ theme: t })}>
+                <div className={`tc-preview ${t}`}>
+                  <span className="tc-side" />
+                  <span className="tc-main">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  {theme === t && (
+                    <span className="tc-check">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3">
+                        <path d="M5 12l5 5L20 7" />
+                      </svg>
+                    </span>
+                  )}
+                </div>
+                <span className="ac-label">{t === 'system' ? 'System' : t === 'dark' ? 'Dark' : 'Light'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="set-row">
           <div className="set-head">
             <span className="set-title">Accent colour</span>
@@ -1711,13 +1992,13 @@ function SettingsModal({
           </div>
           <div className="accent-grid">
             {ACCENTS.map((a) => {
-              const on = settings.accentColor.toLowerCase() === a.color.toLowerCase()
+              const on = !isCustom && settings.accentColor.toLowerCase() === a.color.toLowerCase()
               return (
                 <button
                   key={a.color}
                   className={`accent-card ${on ? 'on' : ''}`}
                   style={{ ['--c' as string]: a.color }}
-                  onClick={() => patch({ accentColor: a.color })}
+                  onClick={() => pickPreset(a.color)}
                 >
                   <div className="ac-preview">
                     <div className="ac-dots">
@@ -1746,7 +2027,10 @@ function SettingsModal({
               <button
                 className={`accent-card custom ${isCustom ? 'on' : ''}`}
                 style={{ ['--c' as string]: settings.accentColor }}
-                onClick={() => setPickerOpen((o) => !o)}
+                onClick={() => {
+                  setCustom(true)
+                  setPickerOpen((o) => !o)
+                }}
               >
                 <div className="ac-preview">
                   <span className="ac-plus">+</span>
@@ -1761,7 +2045,16 @@ function SettingsModal({
                 </div>
                 <span className="ac-label">Custom</span>
               </button>
-              {pickerOpen && <ColorPicker value={settings.accentColor} onChange={(c) => patch({ accentColor: c })} onClose={() => setPickerOpen(false)} />}
+              {pickerOpen && (
+                <ColorPicker
+                  value={settings.accentColor}
+                  onChange={(c) => {
+                    setCustom(true)
+                    patch({ accentColor: c })
+                  }}
+                  onClose={() => setPickerOpen(false)}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1773,7 +2066,7 @@ function SettingsModal({
           </div>
           <button
             className={`toggle ${settings.discordRpc ? 'on' : ''}`}
-            title={settings.discordRpc ? 'On' : 'Off'}
+            data-tip={settings.discordRpc ? 'On' : 'Off'}
             onClick={() => patch({ discordRpc: !settings.discordRpc })}
           >
             <span className="knob" />
@@ -1791,7 +2084,7 @@ function SettingsModal({
               className="filled"
               min={1024}
               max={maxRam}
-              step={512}
+              step={128}
               value={mem}
               style={{ ['--fill' as string]: `${memPct}%` }}
               onChange={(e) => patch({ maxMemory: Number(e.target.value) })}
@@ -1802,14 +2095,18 @@ function SettingsModal({
                 min={1024}
                 max={maxRam}
                 step={512}
-                value={mem}
+                value={memText ?? mem}
                 onChange={(e) => {
-                  const v = Number(e.target.value)
-                  if (!Number.isNaN(v)) patch({ maxMemory: v })
+                  const raw = e.target.value
+                  setMemText(raw) // keep whatever is typed, including empty
+                  const v = Number(raw)
+                  if (raw !== '' && !Number.isNaN(v)) patch({ maxMemory: v })
                 }}
-                onBlur={(e) => {
-                  const v = Number(e.target.value) || 1024
+                onBlur={() => {
+                  // Commit: empty / invalid falls back to the current value, then clamp + snap.
+                  const v = memText === '' || memText === null || Number.isNaN(Number(memText)) ? mem : Number(memText)
                   patch({ maxMemory: Math.max(1024, Math.min(maxRam, Math.round(v / 512) * 512)) })
+                  setMemText(null)
                 }}
               />
               <span className="mem-unit">MB</span>
@@ -1891,7 +2188,7 @@ function JavaSlot({ major, value, onChange }: { major: number; value: string; on
         </span>
       </div>
       <div className="jslot-btns">
-        <button onClick={install} disabled={!!busy || !!value} title={value ? 'Java is already set for this slot' : undefined}>
+        <button onClick={install} disabled={!!busy || !!value} data-tip={value ? 'Java is already set for this slot' : undefined}>
           {busy === 'install' ? <Spinner /> : null}
           Install recommended
         </button>

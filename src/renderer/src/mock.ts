@@ -8,7 +8,15 @@ export function installMock(): void {
     { id: '1', name: 'Fabric 1.20.1', mcVersion: '1.20.1', loader: 'fabric', created: 0, playtimeMs: 12_240_000 },
     { id: '2', name: 'Vanilla 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', created: 0 }
   ]
-  const settings: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
+  const settings: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
+  type Acc = { id: string; name: string; type: 'offline' | 'msa' }
+  let accountState: { accounts: Acc[]; activeId: string | null } = {
+    accounts: [
+      { id: 'off-1', name: 'Player', type: 'offline' },
+      { id: 'mock-1', name: 'Notch', type: 'msa' }
+    ],
+    activeId: 'off-1'
+  }
   const h = (id: string, title: string, description: string, author: string, downloads: number, follows: number): ModHit => ({
     id,
     title,
@@ -95,6 +103,32 @@ export function installMock(): void {
     },
     getSettings: async () => settings,
     saveSettings: async () => true,
+    // Accounts — offline + fake licensed accounts so the switcher is visible in preview.
+    listAccounts: async () => accountState,
+    signIn: async () => {
+      const id = String(Date.now())
+      accountState = { accounts: [...accountState.accounts, { id, name: `MsPlayer${accountState.accounts.length}`, type: 'msa' }], activeId: id }
+      return { ok: true, list: accountState }
+    },
+    addOfflineAccount: async (name: string) => {
+      const id = String(Date.now())
+      accountState = { accounts: [...accountState.accounts, { id, name: name || 'Player', type: 'offline' }], activeId: id }
+      return accountState
+    },
+    renameAccount: async (id: string, name: string) => {
+      accountState = { ...accountState, accounts: accountState.accounts.map((a) => (a.id === id ? { ...a, name } : a)) }
+      return accountState
+    },
+    setActiveAccount: async (id: string | null) => {
+      accountState = { ...accountState, activeId: id }
+      return accountState
+    },
+    removeAccount: async (id: string) => {
+      const accounts = accountState.accounts.filter((a) => a.id !== id)
+      accountState = { accounts, activeId: accountState.activeId === id ? accounts[0]?.id ?? null : accountState.activeId }
+      return accountState
+    },
+    onAuthChanged: () => () => {},
     listProfiles: async () => profiles,
     addProfile: async (name: string, mcVersion: string, loader: string) => {
       const p = { id: String(Date.now()), name: name || mcVersion, mcVersion, loader, created: 0 }

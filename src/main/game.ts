@@ -32,18 +32,36 @@ function offlineUuid(name: string): string {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`
 }
 
+/** The active account resolved to just what the launch needs. */
+export interface LaunchAccount {
+  name: string
+  licensed: boolean
+  uuid?: string // licensed only (from the Minecraft profile)
+  accessToken?: string // licensed only
+}
+
 /** Spawn the game. Everything it needs is already installed by the worker at this point. */
-export function launchGame(opts: { dir: string; versionId: string; java: string; settings: Settings }): Promise<ChildProcess> {
-  const { dir, versionId, java, settings } = opts
-  const name = (settings.username || 'Player').trim() || 'Player'
+export function launchGame(opts: {
+  dir: string
+  versionId: string
+  java: string
+  settings: Settings
+  account?: LaunchAccount | null
+}): Promise<ChildProcess> {
+  const { dir, versionId, java, settings, account } = opts
+  // Name comes from the active account; fall back to the settings username if there's none.
+  const name = (account?.name || settings.username || 'Player').trim() || 'Player'
+  const licensed = !!(account?.licensed && account.uuid && account.accessToken)
   return launch({
     gamePath: dir,
     resourcePath: sharedRoot(),
     javaPath: java,
     version: versionId,
-    gameProfile: { id: offlineUuid(name), name },
-    accessToken: '0',
-    userType: 'mojang',
+    gameProfile: licensed ? { id: account!.uuid!, name } : { id: offlineUuid(name), name },
+    accessToken: licensed ? account!.accessToken! : '0',
+    // 'msa' is what modern clients expect for a Microsoft session; @xmcl's types predate it,
+    // so cast. Offline stays 'mojang' as before.
+    userType: (licensed ? 'msa' : 'mojang') as 'mojang',
     maxMemory: Math.max(512, Math.floor(settings.maxMemory) || 2048)
   })
 }

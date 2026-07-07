@@ -17,11 +17,24 @@ export interface Settings {
   username: string
   maxMemory: number
   accentColor: string
+  theme: 'system' | 'dark' | 'light'
   discordRpc: boolean
   java8: string
   java17: string
   java21: string
   java25: string
+}
+
+// Public view of an account (no tokens). type distinguishes offline nicknames from licensed ones.
+export interface Account {
+  id: string
+  name: string
+  type: 'offline' | 'msa'
+}
+
+export interface AccountsState {
+  accounts: Account[]
+  activeId: string | null
 }
 
 export type ContentType = 'mod' | 'resourcepack' | 'datapack' | 'shader'

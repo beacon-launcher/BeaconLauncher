@@ -1,7 +1,7 @@
 {
   "name": "beacon-launcher",
   "productName": "Beacon Launcher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Beacon — a dead-simple, open-source, offline Minecraft launcher (Electron + React).",
   "license": "GPL-3.0-or-later",
   "author": {

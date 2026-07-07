@@ -1,4 +1,4 @@
-import type { Profile, Settings, ModHit, ContentType, ContentItem, ProjectDetail } from './types'
+import type { Profile, Settings, ModHit, ContentType, ContentItem, ProjectDetail, AccountsState } from './types'
 
 declare global {
   interface Window {
@@ -12,6 +12,13 @@ declare global {
       ): () => void
       getSettings(): Promise<Settings>
       saveSettings(s: Settings): Promise<boolean>
+      listAccounts(): Promise<AccountsState>
+      signIn(): Promise<{ ok: boolean; list?: AccountsState; error?: string }>
+      addOfflineAccount(name: string): Promise<AccountsState>
+      renameAccount(id: string, name: string): Promise<AccountsState>
+      setActiveAccount(id: string | null): Promise<AccountsState>
+      removeAccount(id: string): Promise<AccountsState>
+      onAuthChanged(cb: (s: AccountsState) => void): () => void
       listProfiles(): Promise<Profile[]>
       addProfile(name: string, mcVersion: string, loader: string, loaderVersion?: string, avatarSrc?: string): Promise<Profile>
       pickImage(): Promise<string | null>

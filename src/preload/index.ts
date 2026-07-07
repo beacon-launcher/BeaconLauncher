@@ -14,6 +14,18 @@ const api = {
   // settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (s: unknown) => ipcRenderer.invoke('settings:set', s),
+  // accounts (offline nicknames + Microsoft / licensed sign-in)
+  listAccounts: () => ipcRenderer.invoke('auth:list'),
+  signIn: () => ipcRenderer.invoke('auth:signIn'),
+  addOfflineAccount: (name: string) => ipcRenderer.invoke('auth:addOffline', name),
+  renameAccount: (id: string, name: string) => ipcRenderer.invoke('auth:rename', { id, name }),
+  setActiveAccount: (id: string | null) => ipcRenderer.invoke('auth:setActive', id),
+  removeAccount: (id: string) => ipcRenderer.invoke('auth:remove', id),
+  onAuthChanged: (cb: (s: { accounts: { id: string; name: string; type: string }[]; activeId: string | null }) => void) => {
+    const l = (_e: unknown, s: { accounts: { id: string; name: string; type: string }[]; activeId: string | null }) => cb(s)
+    ipcRenderer.on('authChanged', l)
+    return () => ipcRenderer.removeListener('authChanged', l)
+  },
   // profiles
   listProfiles: () => ipcRenderer.invoke('profiles:list'),
   addProfile: (name: string, mcVersion: string, loader: string, loaderVersion?: string, avatarSrc?: string) =>

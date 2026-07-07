@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, safeStorage } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -9,6 +9,7 @@ export interface Settings {
   username: string
   maxMemory: number
   accentColor: string
+  theme: 'system' | 'dark' | 'light'
   discordRpc: boolean
   // Optional manual overrides per Java major (empty = auto-download the one the version needs).
   java8: string
@@ -37,9 +38,24 @@ export interface Profile {
   avatar?: string // absolute path to a custom avatar image; empty = generated identicon
 }
 
+// A launcher account. Either an offline nickname (cracked-style, no auth) or a licensed
+// Microsoft account with real tokens. Both live in the same list so the user can freely add
+// several of each and switch between them.
+export interface Account {
+  id: string // stable key: MC UUID for msa, random UUID for offline
+  name: string // username shown / passed to the game
+  type: 'offline' | 'msa'
+  // msa only:
+  msRefresh?: string // Microsoft OAuth refresh token — encrypted at rest
+  mcToken?: string // current Minecraft access token (short-lived)
+  mcExpiresAt?: number // epoch ms when mcToken stops being valid
+}
+
 const dataDir = (): string => app.getPath('userData')
 const settingsFile = (): string => join(dataDir(), 'settings.json')
 const profilesFile = (): string => join(dataDir(), 'profiles.json')
+const accountsFile = (): string => join(dataDir(), 'accounts.json')
+const legacyAccountFile = (): string => join(dataDir(), 'account.json') // pre-multi-account single file
 
 // Shared game files (versions / libraries / assets) live here and are reused by every profile,
 // so the same Minecraft version is only ever downloaded once.
@@ -49,7 +65,7 @@ export const profilesRoot = (): string => join(dataDir(), 'profiles')
 export const avatarsRoot = (): string => join(dataDir(), 'avatars')
 export const instanceDir = (id: string): string => join(profilesRoot(), getProfile(id)?.dir ?? id)
 
-const DEFAULT_SETTINGS: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
+const DEFAULT_SETTINGS: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
 
 export function getSettings(): Settings {
   try {
@@ -66,6 +82,125 @@ export function saveSettings(s: Settings): void {
   } catch {
     /* ignore */
   }
+}
+
+// The refresh token is the only long-lived secret here, so it's encrypted with the OS
+// keychain (DPAPI / Keychain / libsecret) when available. If encryption isn't available
+// (e.g. a headless Linux box with no keyring), fall back to plaintext so sign-in still works.
+function encrypt(s: string): string {
+  try {
+    if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(s).toString('base64')
+  } catch {
+    /* ignore */
+  }
+  return 'raw:' + s
+}
+function decrypt(s: string): string {
+  if (s.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(s.slice(4), 'base64'))
+  if (s.startsWith('raw:')) return s.slice(4)
+  return s // legacy/plain
+}
+
+// Multiple signed-in accounts plus which one is active. activeId === null means offline
+// (play with Settings.username). Persisted with each account's refresh token encrypted.
+export interface AccountsState {
+  accounts: Account[]
+  activeId: string | null
+}
+
+// msRefresh is the only secret and only exists on msa accounts; (de)crypt it when present.
+const readAcc = (a: Account): Account => (a.msRefresh ? { ...a, msRefresh: decrypt(a.msRefresh) } : a)
+const writeAcc = (a: Account): Account => (a.msRefresh ? { ...a, msRefresh: encrypt(a.msRefresh) } : a)
+
+function readAccountsFile(): AccountsState {
+  try {
+    // Migrate the old single (msa) account file into the new array on first read.
+    if (!existsSync(accountsFile()) && existsSync(legacyAccountFile())) {
+      const a = JSON.parse(readFileSync(legacyAccountFile(), 'utf-8')) as Account
+      const migrated: AccountsState = { accounts: [{ ...readAcc(a), type: 'msa' }], activeId: a.id }
+      writeAccountsFile(migrated)
+      rmSync(legacyAccountFile(), { force: true })
+      return migrated
+    }
+    if (existsSync(accountsFile())) {
+      const raw = JSON.parse(readFileSync(accountsFile(), 'utf-8')) as AccountsState
+      const accounts = (raw.accounts ?? []).map(readAcc)
+      const activeId = accounts.some((a) => a.id === raw.activeId) ? raw.activeId : null
+      return { accounts, activeId }
+    }
+    // First ever run: seed one offline account from the existing username so the bar isn't empty.
+    const name = (getSettings().username || 'Player').trim() || 'Player'
+    const seeded: AccountsState = { accounts: [{ id: randomUUID(), name, type: 'offline' }], activeId: null }
+    seeded.activeId = seeded.accounts[0].id
+    writeAccountsFile(seeded)
+    return seeded
+  } catch {
+    return { accounts: [], activeId: null }
+  }
+}
+
+function writeAccountsFile(state: AccountsState): void {
+  try {
+    writeFileSync(accountsFile(), JSON.stringify({ accounts: state.accounts.map(writeAcc), activeId: state.activeId }, null, 2))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getAccounts(): AccountsState {
+  return readAccountsFile()
+}
+
+/** The active account (offline or licensed), or null if none is selected / none exist. */
+export function getActiveAccount(): Account | null {
+  const s = readAccountsFile()
+  return s.activeId ? s.accounts.find((a) => a.id === s.activeId) ?? null : null
+}
+
+/** Add a new account (or replace one with the same id, e.g. re-sign-in) and make it active. */
+export function upsertAccount(a: Account): void {
+  const s = readAccountsFile()
+  const rest = s.accounts.filter((x) => x.id !== a.id)
+  writeAccountsFile({ accounts: [...rest, a], activeId: a.id })
+}
+
+/** Add an offline nickname account and make it active. */
+export function addOfflineAccount(name: string): Account {
+  const s = readAccountsFile()
+  const a: Account = { id: randomUUID(), name: name.trim() || 'Player', type: 'offline' }
+  writeAccountsFile({ accounts: [...s.accounts, a], activeId: a.id })
+  return a
+}
+
+/** Rename an offline account (licensed names are fixed by Microsoft). */
+export function renameAccount(id: string, name: string): void {
+  const s = readAccountsFile()
+  writeAccountsFile({
+    accounts: s.accounts.map((a) => (a.id === id && a.type === 'offline' ? { ...a, name: name.trim() || a.name } : a)),
+    activeId: s.activeId
+  })
+}
+
+/** Persist refreshed tokens for an existing account without changing which one is active. */
+export function updateAccount(a: Account): void {
+  const s = readAccountsFile()
+  if (!s.accounts.some((x) => x.id === a.id)) return
+  writeAccountsFile({ accounts: s.accounts.map((x) => (x.id === a.id ? a : x)), activeId: s.activeId })
+}
+
+/** Set the active account. null = none. */
+export function setActiveAccount(id: string | null): void {
+  const s = readAccountsFile()
+  const activeId = id && s.accounts.some((a) => a.id === id) ? id : null
+  writeAccountsFile({ accounts: s.accounts, activeId })
+}
+
+/** Remove an account; if it was active, fall back to another one (or none). */
+export function removeAccount(id: string): void {
+  const s = readAccountsFile()
+  const accounts = s.accounts.filter((a) => a.id !== id)
+  const activeId = s.activeId === id ? accounts[0]?.id ?? null : s.activeId
+  writeAccountsFile({ accounts, activeId })
 }
 
 export function getProfiles(): Profile[] {

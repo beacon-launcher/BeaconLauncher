@@ -21,6 +21,27 @@ Group entries under: Added · Changed · Fixed · Removed · Security.
 
 ### Fixed
 
+## [0.2.0] - 2026-07-08
+
+### Added
+
+- Microsoft ("licensed") sign-in through a real Microsoft login window (OAuth authorization-code
+  flow with PKCE) — unlocks premium/online-mode servers, your own skin and Realms.
+- Multiple accounts: add several offline nicknames and licensed Microsoft accounts, then switch,
+  rename or remove them from an accounts panel opened via the top-bar nickname.
+- Colour theme setting: **System** (follows the OS), **Dark** or **Light**, with live preview cards.
+- Minimalist custom tooltips across the app.
+
+### Changed
+
+- The top-bar nickname field is now an account switcher.
+- The default accent adapts to the theme (dark accent on the light theme).
+- Selection / active highlights use a neutral colour independent of the chosen accent.
+
+### Security
+
+- Microsoft refresh tokens are encrypted at rest via the OS keychain (Electron `safeStorage`).
+
 ## [0.1.0] - 2026-07-07
 
 ### Added
@@ -35,5 +56,6 @@ Group entries under: Added · Changed · Fixed · Removed · Security.
 - Cross-platform installers (Windows NSIS, macOS dmg/zip, Linux AppImage/deb) via electron-builder.
 - In-app auto-update from GitHub Releases (electron-updater).
 
-[Unreleased]: https://github.com/beacon-launcher/launcher/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/beacon-launcher/launcher/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/beacon-launcher/launcher/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/beacon-launcher/launcher/releases/tag/v0.1.0

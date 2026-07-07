@@ -69,11 +69,25 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4 # needed to read CHANGELOG.md for the release body
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Extract release notes from CHANGELOG
+        # Pull just this version's section (between "## [x.y.z]" and the next "## [") so the
+        # GitHub release body is the changelog, not a commit message. Falls back to empty.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VER" '
+            $0 ~ ("^## \\[" ver "\\]") { p=1; next }
+            p && /^## \[/ { exit }
+            p { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          echo "Release notes:"; cat RELEASE_NOTES.md
 
       - name: Delete any previous release for this tag (clean slate)
         env:
@@ -85,6 +99,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
           files: |
             dist/*.exe
             dist/*.dmg
