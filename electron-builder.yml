@@ -18,6 +18,11 @@ asar: true
 # Nothing native here (pure-JS deps), so no rebuild step is needed.
 npmRebuild: false
 
+# Space-free artifact names everywhere (uses the package `name`, not the display
+# `productName`). A space in productName leaks into the mac .zip.blockmap names and
+# breaks GitHub's asset overwrite ("already_exists" 422) during publish.
+artifactName: ${name}-${version}-${arch}.${ext}
+
 # Where the app looks for (and where CI publishes) new versions.
 publish:
   provider: github
@@ -41,7 +46,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Beacon Launcher
-  artifactName: ${productName}-${version}-Setup.${ext}
+  artifactName: ${name}-${version}-Setup.${ext}
   uninstallDisplayName: Beacon Launcher
 
 # ── macOS ────────────────────────────────────────────────────────────────────
@@ -60,7 +65,7 @@ mac:
   gatekeeperAssess: false
 
 dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
 
 # ── Linux ────────────────────────────────────────────────────────────────────
 linux:
@@ -74,4 +79,4 @@ linux:
       arch: [x64]
 
 appImage:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
