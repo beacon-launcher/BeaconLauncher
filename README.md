@@ -1,4 +1,4 @@
-# Beacon
+# Beacon Launcher
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](./LICENSE)
 [![Release](https://img.shields.io/github/v/release/beacon-launcher/launcher?display_name=tag&sort=semver)](https://github.com/beacon-launcher/launcher/releases/latest)
