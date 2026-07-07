@@ -9,7 +9,7 @@ import updater from 'electron-updater'
 // instead of silently failing. Windows (NSIS) and Linux (AppImage) update in place.
 
 const { autoUpdater } = updater
-const RELEASES_URL = 'https://github.com/beacon-launcher/launcher/releases/latest'
+const RELEASES_URL = 'https://github.com/beacon-launcher/BeaconLauncher/releases/latest'
 const isMac = process.platform === 'darwin'
 
 export type UpdateState = 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error'

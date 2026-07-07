@@ -56,6 +56,6 @@ Group entries under: Added · Changed · Fixed · Removed · Security.
 - Cross-platform installers (Windows NSIS, macOS dmg/zip, Linux AppImage/deb) via electron-builder.
 - In-app auto-update from GitHub Releases (electron-updater).
 
-[Unreleased]: https://github.com/beacon-launcher/launcher/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/beacon-launcher/launcher/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/beacon-launcher/launcher/releases/tag/v0.1.0
+[Unreleased]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/beacon-launcher/BeaconLauncher/releases/tag/v0.1.0

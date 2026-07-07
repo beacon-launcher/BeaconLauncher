@@ -27,7 +27,7 @@ artifactName: ${name}-${version}-${arch}.${ext}
 publish:
   provider: github
   owner: beacon-launcher
-  repo: launcher
+  repo: BeaconLauncher
   releaseType: release
 
 # ── Windows ──────────────────────────────────────────────────────────────────

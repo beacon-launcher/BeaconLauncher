@@ -1,9 +1,9 @@
 # Beacon Launcher
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](./LICENSE)
-[![Release](https://img.shields.io/github/v/release/beacon-launcher/launcher?display_name=tag&sort=semver)](https://github.com/beacon-launcher/launcher/releases/latest)
-[![Build](https://github.com/beacon-launcher/launcher/actions/workflows/release.yml/badge.svg)](https://github.com/beacon-launcher/launcher/actions/workflows/release.yml)
-[![Downloads](https://img.shields.io/github/downloads/beacon-launcher/launcher/total)](https://github.com/beacon-launcher/launcher/releases)
+[![Release](https://img.shields.io/github/v/release/beacon-launcher/BeaconLauncher?display_name=tag&sort=semver)](https://github.com/beacon-launcher/BeaconLauncher/releases/latest)
+[![Build](https://github.com/beacon-launcher/BeaconLauncher/actions/workflows/release.yml/badge.svg)](https://github.com/beacon-launcher/BeaconLauncher/actions/workflows/release.yml)
+[![Downloads](https://img.shields.io/github/downloads/beacon-launcher/BeaconLauncher/total)](https://github.com/beacon-launcher/BeaconLauncher/releases)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 A dead-simple, open-source **offline** Minecraft launcher. Pick a version, type a
@@ -101,11 +101,11 @@ an **Update** pill appears in the title bar:
 
 - **Windows / Linux** — click to download in place, then **Restart to update**.
 - **macOS** — unsigned builds can't self-apply, so it opens the
-  [Releases page](https://github.com/beacon-launcher/launcher/releases) to download
+  [Releases page](https://github.com/beacon-launcher/BeaconLauncher/releases) to download
   the new `.dmg` manually.
 
 Update source is configured in [`electron-builder.yml`](./electron-builder.yml)
-(`publish: github → beacon-launcher/launcher`).
+(`publish: github → beacon-launcher/BeaconLauncher`).
 
 ## License
 
