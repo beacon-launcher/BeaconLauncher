@@ -1,5 +1,11 @@
 # Beacon
 
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](./LICENSE)
+[![Release](https://img.shields.io/github/v/release/beacon-launcher/launcher?display_name=tag&sort=semver)](https://github.com/beacon-launcher/launcher/releases/latest)
+[![Build](https://github.com/beacon-launcher/launcher/actions/workflows/release.yml/badge.svg)](https://github.com/beacon-launcher/launcher/actions/workflows/release.yml)
+[![Downloads](https://img.shields.io/github/downloads/beacon-launcher/launcher/total)](https://github.com/beacon-launcher/launcher/releases)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+
 A dead-simple, open-source **offline** Minecraft launcher. Pick a version, type a
 username, press Play. No Microsoft login, no accounts — Beacon downloads the game
 straight from Mojang and launches it.
