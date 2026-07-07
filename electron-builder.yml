@@ -1,0 +1,77 @@
+# Cross-platform packaging + auto-update config for electron-builder.
+# Installers are published to GitHub Releases; the app updates itself from there
+# (see src/main/updater.ts + electron-updater).
+appId: com.beacon.launcher
+productName: Beacon Launcher
+copyright: Copyright © 2026 Beacon Launcher — GPL-3.0-or-later
+
+directories:
+  output: dist
+  buildResources: build
+
+# electron-vite builds the app into out/; ship that plus the manifest.
+files:
+  - out/**/*
+  - package.json
+
+asar: true
+# Nothing native here (pure-JS deps), so no rebuild step is needed.
+npmRebuild: false
+
+# Where the app looks for (and where CI publishes) new versions.
+publish:
+  provider: github
+  owner: beacon-launcher
+  repo: launcher
+  releaseType: release
+
+# ── Windows ──────────────────────────────────────────────────────────────────
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  # No signing certificate — leave unsigned (SmartScreen may warn on first run).
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Beacon Launcher
+  artifactName: ${productName}-${version}-Setup.${ext}
+  uninstallDisplayName: Beacon Launcher
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+mac:
+  icon: build/icon.png
+  category: public.app-category.games
+  # dmg for humans, zip is required by electron-updater's Squirrel.Mac feed.
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  # Unsigned build: skip signing/notarization so CI doesn't fail without certs.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# ── Linux ────────────────────────────────────────────────────────────────────
+linux:
+  icon: build/icon.png
+  category: Game
+  synopsis: Dead-simple offline Minecraft launcher
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}

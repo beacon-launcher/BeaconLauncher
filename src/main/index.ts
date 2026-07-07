@@ -1,0 +1,438 @@
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, clipboard } from 'electron'
+import { join, extname } from 'node:path'
+import { existsSync, copyFileSync, readFileSync, mkdirSync, statSync } from 'node:fs'
+import { totalmem } from 'node:os'
+import type { ChildProcess } from 'node:child_process'
+import './net' // sets a tuned global undici dispatcher for the main process's Modrinth fetches
+import * as store from './store'
+import { listVersions, launchGame } from './game'
+import { detectJava } from './java'
+import * as installer from './installer'
+import * as loaders from './loaders'
+import * as modpack from './modpack'
+import * as discord from './discord'
+import * as mods from './mods'
+import * as updater from './updater'
+
+app.setName('Beacon Launcher')
+// Keep the data dir at its original "Beacon" location so renaming the app doesn't orphan
+// already-installed versions/profiles (userData defaults to appData/<name>).
+app.setPath('userData', join(app.getPath('appData'), 'Beacon'))
+// Windows taskbar identity — makes it group/label as Beacon Launcher instead of "Electron".
+if (process.platform === 'win32') app.setAppUserModelId('com.beacon.launcher')
+// Kill the native menu bar entirely so ALT never drops a menu from the top.
+Menu.setApplicationMenu(null)
+
+let win: BrowserWindow | null = null
+let child: ChildProcess | null = null
+
+function iconPath(): string | undefined {
+  for (const c of [join(app.getAppPath(), 'build', 'icon.png'), join(process.cwd(), 'build', 'icon.png')]) {
+    if (existsSync(c)) return c
+  }
+  return undefined
+}
+
+function send(channel: string, payload: unknown): void {
+  win?.webContents.send(channel, payload)
+}
+
+// Per-profile install/run state — the single source of truth the UI renders from
+// (sidebar badge, profile button, the parallel-installs panel in the status bar).
+function pstate(id: string, status: string, percent: number, text: string): void {
+  send('profileState', { id, status, percent, text })
+}
+function isCancelled(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { cancelled?: boolean }).cancelled === true
+}
+
+// AggregateError (from undici when every download attempt fails) hides the real cause in
+// `.errors`; unwrap it so the message is actually useful (ETIMEDOUT, 404, ECONNRESET, …).
+function errMsg(e: unknown): string {
+  if (e instanceof AggregateError && Array.isArray(e.errors) && e.errors.length) {
+    const inner = e.errors.map((x) => (x instanceof Error ? x.message : String(x))).filter(Boolean)
+    if (inner.length) return `${inner.slice(0, 3).join(' · ')}${inner.length > 3 ? ` (+${inner.length - 3} more)` : ''}`
+  }
+  return e instanceof Error ? e.message || e.name : typeof e === 'string' ? e : JSON.stringify(e)
+}
+
+// Download a freshly-created profile in the background (Minecraft + loader + Java) so it's
+// ready to play. Progress is reported per-profile via 'profileState'.
+function backgroundInstall(p: store.Profile): void {
+  pstate(p.id, 'installing', 0, 'Preparing…')
+  installer
+    .prepareInstall(p, store.getSettings(), (percent, text) => pstate(p.id, 'installing', percent, text))
+    .then((ready) => {
+      store.setInstallResult(p.id, ready.versionId, ready.java)
+      pstate(p.id, 'ready', 100, 'Ready')
+    })
+    .catch((e) => {
+      if (isCancelled(e)) {
+        pstate(p.id, 'idle', 0, '')
+        return
+      }
+      pstate(p.id, 'error', 0, 'Install failed')
+      send('toast', { text: `Install failed: ${errMsg(e)}` })
+    })
+}
+
+// Import a modpack into a freshly-created profile (download its mods/config, then install base).
+function backgroundImport(p: store.Profile, filePath: string): void {
+  pstate(p.id, 'installing', 0, 'Importing…')
+  installer
+    .importModpack(p, store.getSettings(), filePath, (percent, text) => pstate(p.id, 'installing', percent, text))
+    .then((ready) => {
+      store.setInstallResult(p.id, ready.versionId, ready.java)
+      pstate(p.id, 'ready', 100, 'Ready')
+    })
+    .catch((e) => {
+      if (isCancelled(e)) {
+        pstate(p.id, 'idle', 0, '')
+        return
+      }
+      pstate(p.id, 'error', 0, 'Import failed')
+      send('toast', { text: `Import failed: ${errMsg(e)}` })
+    })
+}
+
+function createWindow(): void {
+  win = new BrowserWindow({
+    width: 1000,
+    height: 680,
+    minWidth: 860,
+    minHeight: 560,
+    title: 'Beacon Launcher',
+    icon: iconPath(),
+    frame: false,
+    backgroundColor: '#08090c',
+    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
+  })
+  win.on('closed', () => {
+    win = null
+  })
+  win.on('maximize', () => win?.webContents.send('winState', { maximized: true }))
+  win.on('unmaximize', () => win?.webContents.send('winState', { maximized: false }))
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+  updater.initUpdater(win)
+}
+
+app.whenReady().then(() => {
+  createWindow()
+  discord.setEnabled(store.getSettings().discordRpc !== false)
+  discord.setActivity({ details: 'Idling' })
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+
+// ── app / updates ─────────────────────────────────────────────────────────
+ipcMain.handle('app:version', () => app.getVersion())
+ipcMain.handle('update:check', () => updater.checkForUpdate())
+ipcMain.handle('update:download', () => updater.downloadUpdate())
+ipcMain.handle('update:install', () => updater.quitAndInstall())
+
+// ── settings ────────────────────────────────────────────────────────────────
+ipcMain.handle('settings:get', () => store.getSettings())
+ipcMain.handle('settings:set', (_e, s: store.Settings) => {
+  store.saveSettings(s)
+  return true
+})
+
+// ── profiles ──────────────────────────────────────────────────────────────
+ipcMain.handle('profiles:list', () => store.getProfiles())
+ipcMain.handle('profiles:add', (_e, a: { name: string; mcVersion: string; loader: store.Loader; loaderVersion?: string; avatarSrc?: string }) => {
+  const p = store.addProfile(a.name, a.mcVersion, a.loader, a.loaderVersion)
+  if (a.avatarSrc) {
+    try {
+      mkdirSync(store.avatarsRoot(), { recursive: true })
+      const ext = extname(a.avatarSrc).toLowerCase() || '.png'
+      const dest = join(store.avatarsRoot(), `${p.id}${ext}`)
+      copyFileSync(a.avatarSrc, dest)
+      store.setAvatar(p.id, dest)
+      p.avatar = dest
+    } catch {
+      /* ignore avatar copy errors */
+    }
+  }
+  backgroundInstall(p)
+  return p
+})
+ipcMain.handle('profiles:rename', (_e, a: { id: string; name: string }) => {
+  store.renameProfile(a.id, a.name)
+  return true
+})
+ipcMain.handle('profiles:delete', (_e, id: string) => {
+  store.deleteProfile(id)
+  return true
+})
+ipcMain.handle('profiles:reorder', (_e, orderedIds: string[]) => {
+  store.reorderProfiles(orderedIds)
+  return true
+})
+ipcMain.handle('profiles:openFolder', async (_e, id: string) => {
+  await shell.openPath(store.instanceDir(id))
+  return true
+})
+ipcMain.handle('content:openFolder', async (_e, a: { id: string; type: mods.ContentType }) => {
+  await shell.openPath(mods.contentFolder(a.id, a.type))
+  return true
+})
+ipcMain.handle('app:openUrl', async (_e, url: string) => {
+  if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
+  return true
+})
+
+// Total system RAM in MB (for the memory slider max).
+ipcMain.handle('system:totalRam', () => Math.floor(totalmem() / (1024 * 1024)))
+
+// Discord Rich Presence.
+ipcMain.handle('discord:activity', (_e, a: { profile?: string | null }) => {
+  if (a.profile) discord.setActivity({ details: `Playing ${a.profile}`})
+  else discord.setActivity({ details: 'Idling' })
+  return true
+})
+ipcMain.handle('discord:enabled', (_e, v: boolean) => {
+  discord.setEnabled(v)
+  return true
+})
+
+// Custom window controls (the OS title bar is hidden — frame: false).
+ipcMain.handle('window:minimize', () => win?.minimize())
+ipcMain.handle('window:maximize', () => {
+  if (!win) return
+  if (win.isMaximized()) win.unmaximize()
+  else win.maximize()
+})
+ipcMain.handle('window:close', () => win?.close())
+
+// ── versions ────────────────────────────────────────────────────────────────
+ipcMain.handle('versions:list', (_e, showSnapshots: boolean) => listVersions(showSnapshots))
+// MC versions a given loader supports (null = all, for vanilla).
+ipcMain.handle('loaders:versions', (_e, loader: string) => loaders.supportedVersions(loader))
+// Loader builds for a loader + MC version (Stable/Latest/Other picker in the New-profile dialog).
+ipcMain.handle('loaders:builds', (_e, a: { loader: string; mcVersion: string }) => loaders.loaderBuilds(a.loader, a.mcVersion))
+
+// ── launch ──────────────────────────────────────────────────────────────────
+ipcMain.handle('game:launch', async (_e, profileId: string) => {
+  // Only one game at a time. Background downloads are fine, but don't let a second game start.
+  if (child) {
+    const msg = 'A game is already running — stop it first.'
+    send('toast', { text: msg })
+    return { ok: false, error: msg }
+  }
+  const profile = store.getProfile(profileId)
+  if (!profile) return { ok: false, error: 'Profile not found' }
+  try {
+    const settings = store.getSettings()
+
+    // Fast path: if this profile is already installed and the cached files are still on disk
+    // AND non-empty, launch straight away — no re-download/validation. The non-empty check
+    // matters: a failed download can leave a 0-byte java.exe or version json, and launching
+    // those fails ("spawn EFTYPE"). If anything looks off, fall through to a full (self-
+    // healing) install instead.
+    const nonEmpty = (p: string): boolean => {
+      try {
+        return statSync(p).size > 0
+      } catch {
+        return false
+      }
+    }
+    const cachedJava = profile.javaPath && nonEmpty(profile.javaPath) ? profile.javaPath : ''
+    const versionJson = profile.versionId
+      ? join(store.sharedRoot(), 'versions', profile.versionId, `${profile.versionId}.json`)
+      : ''
+    let ready: { dir: string; versionId: string; java: string }
+    if (profile.installed && profile.versionId && cachedJava && versionJson && nonEmpty(versionJson)) {
+      ready = { dir: store.instanceDir(profile.id), versionId: profile.versionId, java: cachedJava }
+    } else {
+      pstate(profile.id, 'installing', 0, 'Preparing…')
+      ready = await installer.prepareInstall(profile, settings, (percent, text) => pstate(profile.id, 'installing', percent, text))
+      store.setInstallResult(profile.id, ready.versionId, ready.java)
+    }
+
+    pstate(profile.id, 'launching', 100, 'Launching…')
+    child = await launchGame({ ...ready, settings })
+    const startedAt = Date.now()
+    pstate(profile.id, 'running', 100, 'Running')
+    // Discord shows the profile only while it's actually running (Idling otherwise).
+    discord.setActivity({ details: 'Playing', state: profile.name })
+    child.stdout?.on('data', (d: Buffer) => send('log', d.toString()))
+    child.stderr?.on('data', (d: Buffer) => send('log', d.toString()))
+    child.on('exit', (code) => {
+      store.addPlaytime(profile.id, Date.now() - startedAt)
+      pstate(profile.id, 'ready', 100, `Closed (exit ${code ?? 0})`)
+      send('profilesChanged', null) // playtime updated → let the UI re-read profiles
+      discord.setActivity({ details: 'Idling' })
+      child = null
+    })
+    return { ok: true }
+  } catch (e) {
+    if (isCancelled(e)) {
+      pstate(profile.id, 'idle', 0, '')
+      return { ok: false, error: 'cancelled' }
+    }
+    const msg = errMsg(e)
+    pstate(profile.id, 'error', 0, 'Failed')
+    send('toast', { text: msg || 'Launch failed' })
+    return { ok: false, error: msg || 'launch failed' }
+  }
+})
+
+// Cancel an in-flight install (Play/create download). The pending promise rejects with a
+// cancelled marker, handled by the catch blocks above / in backgroundInstall.
+ipcMain.handle('install:cancel', (_e, id: string) => {
+  installer.cancelInstall(id)
+  return true
+})
+
+ipcMain.handle('game:stop', () => {
+  child?.kill()
+  return true
+})
+
+// ── java ──────────────────────────────────────────────────────────────────
+ipcMain.handle('java:detect', async (_e, major: number) => {
+  const path = await detectJava(major)
+  return { ok: !!path, path: path ?? undefined }
+})
+
+ipcMain.handle('java:install', async (_e, major: number) => {
+  try {
+    const { path } = await installer.installJava(major, store.getSettings(), (percent, text) => {
+      send('progress', { percent })
+      send('status', { phase: 'install', text })
+    })
+    send('status', { phase: 'idle', text: `Java ${major} ready` })
+    return { ok: true, path }
+  } catch (e) {
+    const m = errMsg(e)
+    send('status', { phase: 'idle', text: 'Ready' })
+    send('toast', { text: m })
+    return { ok: false, error: m }
+  }
+})
+
+// ── content: mods / resource packs / data packs / shaders (Modrinth) ─────────
+ipcMain.handle(
+  'content:search',
+  async (_e, a: { query: string; mcVersion: string; loader: string; sort?: string; type: mods.ContentType; offset?: number }) => {
+    try {
+      const r = await mods.searchModrinth(a.query, a.mcVersion, a.loader, a.sort, a.type, a.offset)
+      return { ok: true, hits: r.hits, total: r.total }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+)
+
+ipcMain.handle(
+  'content:install',
+  async (
+    _e,
+    a: {
+      profileId: string
+      id: string
+      mcVersion: string
+      loader: string
+      type: mods.ContentType
+      hit?: { title?: string; author?: string; iconUrl?: string; slug?: string }
+    }
+  ) => {
+    try {
+      return { ok: true, filename: await mods.installModrinth(a.profileId, a.id, a.mcVersion, a.loader, a.type, a.hit) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+)
+
+ipcMain.handle('content:list', (_e, a: { profileId: string; type: mods.ContentType }) => mods.listContent(a.profileId, a.type))
+ipcMain.handle('content:enrich', (_e, a: { profileId: string; type: mods.ContentType }) => mods.enrichContent(a.profileId, a.type))
+ipcMain.handle('content:project', async (_e, idOrSlug: string) => {
+  try {
+    return { ok: true, project: await mods.getProject(idOrSlug) }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+ipcMain.handle('content:checkUpdates', (_e, a: { profileId: string; type: mods.ContentType }) => mods.checkUpdates(a.profileId, a.type))
+ipcMain.handle('content:update', async (_e, a: { profileId: string; type: mods.ContentType; name: string }) => {
+  try {
+    return { ok: true, filename: await mods.updateContent(a.profileId, a.type, a.name) }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+ipcMain.handle('content:toggle', (_e, a: { profileId: string; type: mods.ContentType; name: string; enable: boolean }) => {
+  mods.toggleContent(a.profileId, a.type, a.name, a.enable)
+  return true
+})
+ipcMain.handle('content:remove', (_e, a: { profileId: string; type: mods.ContentType; name: string }) => {
+  mods.removeContent(a.profileId, a.type, a.name)
+  return true
+})
+ipcMain.handle('content:addFiles', (_e, a: { profileId: string; type: mods.ContentType; paths: string[] }) =>
+  mods.addFiles(a.profileId, a.type, a.paths)
+)
+
+// ── dialogs ─────────────────────────────────────────────────────────────────
+ipcMain.handle('dialog:pickJava', async () => {
+  if (!win) return null
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], title: 'Select the java(w) executable' })
+  return r.canceled ? null : r.filePaths[0]
+})
+
+ipcMain.handle('dialog:pickModpack', async () => {
+  if (!win) return null
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    title: 'Import a modpack',
+    filters: [{ name: 'Modpacks', extensions: ['mrpack', 'zip'] }]
+  })
+  return r.canceled ? null : r.filePaths[0]
+})
+
+ipcMain.handle('modpack:import', async (_e, filePath: string) => {
+  try {
+    const info = await modpack.readModpack(filePath)
+    const p = store.addProfile(info.name, info.mcVersion, info.loader)
+    backgroundImport(p, filePath)
+    return { ok: true, id: p.id }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
+
+ipcMain.handle('dialog:pickImage', async () => {
+  if (!win) return null
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    title: 'Select an avatar image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }]
+  })
+  return r.canceled ? null : r.filePaths[0]
+})
+
+// Copy arbitrary text to the OS clipboard (used by the error toast → click to copy).
+ipcMain.handle('clipboard:write', (_e, text: string) => {
+  clipboard.writeText(String(text ?? ''))
+  return true
+})
+
+ipcMain.handle('image:dataUrl', (_e, p: string) => {
+  try {
+    const ext = extname(p).slice(1).toLowerCase() || 'png'
+    const mime = ext === 'jpg' ? 'jpeg' : ext
+    return `data:image/${mime};base64,${readFileSync(p).toString('base64')}`
+  } catch {
+    return null
+  }
+})
