@@ -66,10 +66,15 @@ npm run pack          # unpacked app in dist/ (quick smoke test, no installer)
 Output lands in `dist/`. You can only build macOS installers on a Mac, so use CI
 (below) to produce all three from any machine.
 
-> **Windows note:** building locally needs symlink permission — enable *Developer
+> **Windows note:** a full local build needs symlink permission — enable *Developer
 > Mode* (Settings → Privacy & security → For developers) or run the terminal as
 > Administrator, otherwise electron-builder fails unpacking its code-sign helper.
-> CI is unaffected.
+> CI is unaffected. To **quick-test the installer without that permission** (the app
+> window icon still works; only the `.exe` file icon falls back to the default):
+>
+> ```bash
+> npx electron-builder --win --config.win.signAndEditExecutable=false
+> ```
 
 Builds are **unsigned** — Windows SmartScreen and macOS Gatekeeper will warn on
 first launch (right-click → Open on macOS; "More info → Run anyway" on Windows).
