@@ -1,8 +1,12 @@
 name: Release
 
-# Push a version tag (e.g. v0.2.0) → build installers for all three OSes on their
-# native runners and publish them to the matching GitHub Release. electron-updater
-# in the app reads these to offer in-app updates.
+# Two-phase release:
+#   1) build — compile installers for each OS on its native runner (no publishing).
+#   2) publish — one job downloads every artifact, wipes any stale release for this
+#      tag, and uploads them all at once. This avoids electron-builder's flaky
+#      concurrent GitHub uploader (the "422 already_exists" asset races).
+#
+# Push a version tag (e.g. v0.2.0) to trigger.
 on:
   push:
     tags:
@@ -13,7 +17,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -39,10 +43,54 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build & publish installers
+      - name: Build installers
         env:
-          # Provided automatically by Actions; lets electron-builder upload to the Release.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Unsigned build — stop electron-builder from hunting for a macOS signing cert.
+          # Unsigned build — stop electron-builder hunting for a macOS signing cert.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run ${{ matrix.script }} -- --publish always
+        # --publish never: build only, the publish job handles uploads.
+        run: npm run ${{ matrix.script }} -- --publish never
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest*.yml
+            dist/*.blockmap
+          if-no-files-found: ignore
+          retention-days: 5
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Delete any previous release for this tag (clean slate)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "${{ github.ref_name }}" --repo "${{ github.repository }}" --yes || true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest*.yml
+            dist/*.blockmap
+          fail_on_unmatched_files: false
