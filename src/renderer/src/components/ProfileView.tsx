@@ -1,6 +1,7 @@
+import '../styles/ProfileView.css'
 import { useState } from 'react'
 import type { Profile } from '../types'
-import { t } from '../i18n'
+import { t, getLanguage } from '../i18n'
 import { fmtPlaytime } from '../helpers'
 import { ModsPanel } from './ModsPanel'
 
@@ -15,7 +16,8 @@ export function ProfileView({
   onError,
   onRename,
   onFooter,
-  gotoRef
+  gotoRef,
+  onDetailBack
 }: {
   profile: Profile
   state?: { status: string; percent: number; text: string }
@@ -28,6 +30,7 @@ export function ProfileView({
   onRename: (name: string) => void
   onFooter: (info: { text: string; page: number; pages: number } | null) => void
   gotoRef: React.MutableRefObject<(p: number) => void>
+  onDetailBack: (fn: (() => void) | null) => void
 }): React.JSX.Element {
   const status = state?.status
   const pct = state?.percent ?? 0
@@ -100,7 +103,7 @@ export function ProfileView({
       </header>
 
       <div className="body">
-        <ModsPanel profile={profile} onError={onError} onFooter={onFooter} gotoRef={gotoRef} />
+        <ModsPanel profile={profile} onError={onError} onFooter={onFooter} gotoRef={gotoRef} onDetailBack={onDetailBack} lang={getLanguage()} />
       </div>
     </div>
   )

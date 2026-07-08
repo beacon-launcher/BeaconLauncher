@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 const api = {
   // app / updates
   appVersion: () => ipcRenderer.invoke('app:version'),
+  openLogs: () => ipcRenderer.invoke('logs:open'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
@@ -33,6 +34,8 @@ const api = {
   pickImage: () => ipcRenderer.invoke('dialog:pickImage'),
   pickModpack: () => ipcRenderer.invoke('dialog:pickModpack'),
   importModpack: (filePath: string) => ipcRenderer.invoke('modpack:import', filePath),
+  searchModpacks: (query: string, sort: string, offset: number) => ipcRenderer.invoke('modpack:search', { query, sort, offset }),
+  importModpackFromModrinth: (projectId: string) => ipcRenderer.invoke('modpack:importFromModrinth', { projectId }),
   // Resolve the absolute path of a dropped File (Electron 43 removed File.path).
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   imageDataUrl: (path: string) => ipcRenderer.invoke('image:dataUrl', path),
@@ -95,6 +98,7 @@ const api = {
   // java
   pickJava: () => ipcRenderer.invoke('dialog:pickJava'),
   detectJava: (major: number) => ipcRenderer.invoke('java:detect', major),
+  detectAllJava: (majors: number[]) => ipcRenderer.invoke('java:detectAll', majors),
   installJava: (major: number) => ipcRenderer.invoke('java:install', major),
   // events
   onStatus: (cb: (s: { phase: string; text: string }) => void) => {

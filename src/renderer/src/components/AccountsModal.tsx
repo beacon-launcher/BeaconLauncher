@@ -1,3 +1,4 @@
+import '../styles/AccountsModal.css'
 import { useState } from 'react'
 import type { Account } from '../types'
 import { randomUsername } from '../helpers'
@@ -12,7 +13,6 @@ export function AccountsModal({
   onSelect,
   onAddMicrosoft,
   onAddOffline,
-  onRename,
   onRemove,
   onClose
 }: {
@@ -22,12 +22,10 @@ export function AccountsModal({
   onSelect: (id: string) => void
   onAddMicrosoft: () => void
   onAddOffline: (name: string) => void
-  onRename: (id: string, name: string) => void
   onRemove: (id: string) => void
   onClose: () => void
 }): React.JSX.Element {
   const [newNick, setNewNick] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
   const addOffline = (): void => {
     const n = newNick.trim()
     if (!n) return
@@ -86,39 +84,16 @@ export function AccountsModal({
         <div className="acc-list">
           {accounts.map((a) => {
             const licensed = a.type === 'msa'
-            const editing = editingId === a.id
             const active = activeId === a.id
             return (
               <div key={a.id} className={`acc-row ${active ? 'active' : ''}`}>
                 <button className="acc-pick" onClick={() => onSelect(a.id)}>
                   <span className="acc-meta">
-                    {editing ? (
-                      <input
-                        className="acc-name-input"
-                        autoFocus
-                        value={a.name}
-                        maxLength={16}
-                        placeholder={t('nickname')}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => onRename(a.id, e.target.value.replace(/[^A-Za-z0-9_]/g, ''))}
-                        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                        onBlur={() => setEditingId(null)}
-                      />
-                    ) : (
-                      <span className="acc-name">{a.name}</span>
-                    )}
+                    <span className="acc-name">{a.name}</span>
                     <span className="acc-sub">{licensed ? t('microsoft') : t('offline')}</span>
                   </span>
                 </button>
                 <div className="acc-actions">
-                  {!licensed && (
-                    <button className="plain-icon" data-tip={t('rename')} onClick={() => setEditingId(editing ? null : a.id)}>
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-                      </svg>
-                    </button>
-                  )}
                   <button className="plain-icon danger" data-tip={t('remove')} onClick={() => onRemove(a.id)}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />

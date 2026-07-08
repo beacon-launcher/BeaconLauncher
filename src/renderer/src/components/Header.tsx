@@ -1,3 +1,4 @@
+import '../styles/Header.css'
 import { t } from '../i18n'
 import { Spinner } from './ui'
 
@@ -12,6 +13,7 @@ interface UpdateStatus {
 export function Header({
   navIdx,
   navLen,
+  canBack,
   goBack,
   goForward,
   activeAccountName,
@@ -26,6 +28,7 @@ export function Header({
 }: {
   navIdx: number
   navLen: number
+  canBack: boolean
   goBack: () => void
   goForward: () => void
   activeAccountName: string | null
@@ -41,7 +44,7 @@ export function Header({
   return (
     <header className="app-header">
       <div className="th-left">
-        <button className="nav-btn" disabled={navIdx <= 0} onClick={goBack} aria-label={t('back')}>
+        <button className="nav-btn" disabled={!canBack} onClick={goBack} aria-label={t('back')}>
           <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>

@@ -1,3 +1,4 @@
+import '../styles/Modal.css'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export function Modal({
@@ -49,8 +50,11 @@ export function Tooltip(): React.JSX.Element | null {
     } else if (!below && spaceAbove < tipH + 8 && spaceBelow >= tipH + 8) {
       below = true
     }
+    const half = tr.width / 2
     let x = r.left + r.width / 2
-    x = Math.max(tr.width / 2, Math.min(x, window.innerWidth - tr.width / 2))
+    // Keep the (centre-anchored) tooltip inside the viewport horizontally. If it's wider than the
+    // window, just centre it rather than letting the clamp invert.
+    x = tr.width >= window.innerWidth - 16 ? window.innerWidth / 2 : Math.max(half + 8, Math.min(x, window.innerWidth - half - 8))
     const y = below ? r.bottom : r.top
     setPos({ x: Math.round(x), y: Math.round(y), below })
   })
@@ -65,6 +69,9 @@ export function Tooltip(): React.JSX.Element | null {
       setPos(null)
     }
     const show = (el: HTMLElement): void => {
+      // Already showing for this element — don't re-measure (moving over child nodes fires
+      // mouseover repeatedly; re-triggering would make the tooltip flicker/jump).
+      if (el === elRef.current) return
       const text = el.getAttribute('data-tip')
       if (!text) return
       const r = el.getBoundingClientRect()
@@ -82,7 +89,13 @@ export function Tooltip(): React.JSX.Element | null {
       if (el) show(el)
     }
     const onOut = (e: MouseEvent): void => {
-      if (target(e)) hide()
+      // Only hide when the pointer actually LEAVES the tooltipped element — not when it moves
+      // between child nodes inside it (mouseout fires for those too, with relatedTarget still
+      // inside the element).
+      const el = elRef.current
+      if (!el) return
+      const to = e.relatedTarget as Node | null
+      if (!to || !el.contains(to)) hide()
     }
     document.addEventListener('mouseover', onOver)
     document.addEventListener('mouseout', onOut)
@@ -100,11 +113,14 @@ export function Tooltip(): React.JSX.Element | null {
     }
   }, [])
   if (!tip) return null
+  const below = pos ? pos.below : tip.below
   return (
     <div
       ref={tipRef}
-      className={`tooltip ${pos ? (pos.below ? 'below' : '') : (tip.below ? 'below' : '')} ${tip.wrap ? 'tip-wrap' : ''}`}
-      style={{ left: pos?.x ?? tip.x, top: pos?.y ?? tip.y }}
+      className={`tooltip ${below ? 'below' : ''} ${tip.wrap ? 'tip-wrap' : ''} ${pos ? 'shown' : ''}`}
+      // First render (pos not yet computed) is measured off-screen-invisible so the user never sees
+      // it flash at the rough position before it snaps to the adapted one.
+      style={{ left: pos?.x ?? tip.x, top: pos?.y ?? tip.y, visibility: pos ? 'visible' : 'hidden' }}
     >
       {tip.text}
     </div>

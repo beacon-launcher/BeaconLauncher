@@ -1,0 +1,171 @@
+.th-left {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.nav-btn {
+  width: 34px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  transition: color 0.12s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.nav-btn:disabled {
+  color: var(--dim);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.th-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nick-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.dice {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 4px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  transition: color 0.12s;
+  -webkit-app-region: no-drag;
+}
+
+.dice:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.dice.on {
+  color: var(--accent);
+}
+
+.dice:disabled {
+  opacity: 0.45;
+}
+
+/* Update pill in the title bar (appears when a new version is available). */
+.th-update {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.update-pill.ready {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+.update-pill.downloading {
+  cursor: default;
+}
+
+.win-controls {
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.win-btn {
+  width: 42px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn:hover {
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text);
+}
+
+/* ── Header running text (same understated style as the username field) ── */
+.running-text {
+  max-width: 52vw;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px 16px;
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-app-region: no-drag;
+}
+
+/* ── Username field in the top header (Visual-Studio search style) ── */
+.nick-input {
+  width: 440px;
+  max-width: 52vw;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--text);
+  text-align: center;
+  padding: 4px 16px;
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
+  outline: none;
+  transition: border-color 0.12s;
+  -webkit-app-region: no-drag;
+}
+
+.nick-input::placeholder {
+  color: var(--dim);
+}
+
+.nick-input:focus {
+  border-color: var(--accent);
+}
+
+.nick-input:disabled {
+  opacity: 0.5;
+}

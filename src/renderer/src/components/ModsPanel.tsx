@@ -1,19 +1,27 @@
+import '../styles/Mods.css'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ContentType, ContentItem, ModHit, ProjectDetail, Profile } from '../types'
-import { tabsFor, PAGE, fmt, timeAgo, mdToText } from '../helpers'
+import { tabsFor, PAGE, fmt, timeAgo } from '../helpers'
 import { Spinner, LoadingBar, Empty, ContentIcon, Toggle, Dropdown } from './ui'
+import { Markdown } from './Markdown'
 import { t } from '../i18n'
 
 export const ModsPanel = memo(function ModsPanel({
   profile,
   onError,
   onFooter,
-  gotoRef
+  gotoRef,
+  onDetailBack
 }: {
   profile: Profile
   onError: (m: string) => void
   onFooter: (info: { text: string; page: number; pages: number } | null) => void
   gotoRef: React.MutableRefObject<(p: number) => void>
+  onDetailBack: (fn: (() => void) | null) => void
+  // `lang` isn't used directly — it's here so a language switch changes this component's props
+  // and busts React.memo, re-rendering the (otherwise cached) tabs/sort/browse labels in the new
+  // language.
+  lang?: string
 }): React.JSX.Element {
   const tabs = useMemo(() => tabsFor(profile.loader), [profile.loader])
   const [type, setType] = useState<ContentType>(tabs[0].type)
@@ -219,6 +227,11 @@ export const ModsPanel = memo(function ModsPanel({
     setDetail(null)
     setDetailLoading(false)
   }
+  // The content detail page has no in-page Back button — the top-bar Back arrow closes it.
+  useEffect(() => {
+    onDetailBack(inDetail ? closeDetail : null)
+    return () => onDetailBack(null)
+  }, [inDetail, onDetailBack])
   const installById = async (d: ProjectDetail): Promise<void> => {
     setBusyId(d.id)
     const r = await window.beacon.installContent(profile.id, d.id, profile.mcVersion, profile.loader, type, {
@@ -298,12 +311,6 @@ export const ModsPanel = memo(function ModsPanel({
       : []
     return (
       <div className="mods">
-        <button className="detail-back" onClick={closeDetail}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          Back
-        </button>
         {!detail ? (
           <LoadingBar />
         ) : (
@@ -343,7 +350,7 @@ export const ModsPanel = memo(function ModsPanel({
                   </button>
                 ))}
             </div>
-            {detail.body && <div className="detail-body">{mdToText(detail.body)}</div>}
+            {detail.body && <Markdown body={detail.body} className="detail-body" />}
           </div>
         )}
       </div>
@@ -385,7 +392,6 @@ export const ModsPanel = memo(function ModsPanel({
           }}
           onDrop={onDropFiles}
         >
-          {dropping && <div className="drop-hint">{t('dropFilesHint')}</div>}
           {items.length === 0 ? (
             <Empty hint={`${t('noContentPrefix')} ${t(meta.singularKey).toLowerCase()} ${t('noContentSuffix')}`} />
           ) : filtered.length === 0 ? (
@@ -423,7 +429,7 @@ export const ModsPanel = memo(function ModsPanel({
                           onClick={() => doUpdate(it.name)}
                         >
                           {isUpdating ? <Spinner /> : null}
-                          Update
+                          {t('update')}
                         </button>
                       )}
                     </div>

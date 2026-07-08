@@ -1,7 +1,8 @@
+import '../styles/SettingsModal.css'
 import { useState } from 'react'
 import type { Settings } from '../types'
 import { JAVA_KEYS, ACCENTS } from '../helpers'
-import { t } from '../i18n'
+import { t, availableLanguages, setLanguage } from '../i18n'
 import { Spinner, Toggle, RangeSlider } from './ui'
 import { Modal } from './Modal'
 import { ColorPicker } from './ColorPicker'
@@ -154,6 +155,29 @@ export function SettingsModal({
           </div>
         </div>
 
+        <div className="set-row">
+          <div className="set-head">
+            <span className="set-title">{t('language')}</span>
+            <span className="set-sub">{t('languageDesc')}</span>
+          </div>
+          <div className="loaders">
+            {availableLanguages.map((lang) => (
+              <button
+                key={lang.code}
+                className={`loader-btn ${(settings.language || 'en') === lang.code ? 'on' : ''}`}
+                onClick={() => {
+                  // Switch i18next synchronously so the very first click re-renders in the new
+                  // language (t() isn't reactive on its own — the settings update drives the render).
+                  setLanguage(lang.code)
+                  patch({ language: lang.code })
+                }}
+              >
+                {lang.nativeName}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="set-row inline">
           <div className="set-head">
             <span className="set-title">{t('discordRichPresence')}</span>
@@ -215,31 +239,16 @@ export function SettingsModal({
           </div>
         </div>
 
-        <div className="set-row">
-          <div className="set-head">
-            <span className="set-title">{t('language')}</span>
-            <span className="set-sub">{t('languageDesc')}</span>
-          </div>
-          <div className="loaders">
-            <button className={`loader-btn ${settings.language === 'en' || !settings.language ? 'on' : ''}`} onClick={() => patch({ language: 'en' })}>
-              English
-            </button>
-            <button className={`loader-btn ${settings.language === 'ru' ? 'on' : ''}`} onClick={() => patch({ language: 'ru' })}>
-              Русский
-            </button>
-          </div>
-        </div>
-
         <div className="set-row inline">
           <div className="set-head">
             <span className="set-title">{t('about')}</span>
             <span className="set-sub">
               Beacon Launcher {appVersion ? `v${appVersion}` : ''}
-              {update?.state === 'checking' && ` · ${t('checking')}`}
-              {update?.state === 'available' && ` · v${update.version} ${t('available')}`}
-              {update?.state === 'downloading' && ` · ${t('installing')} ${update.percent ?? 0}%`}
-              {update?.state === 'ready' && ` · v${update.version} ${t('readyToInstall')}`}
-              {update?.state === 'none' && ` · ${t('upToDate')}`}
+              {update?.state === 'checking' && ` — ${t('checking')}`}
+              {update?.state === 'available' && ` — v${update.version} ${t('available')}`}
+              {update?.state === 'downloading' && ` — ${t('installing')} ${update.percent ?? 0}%`}
+              {update?.state === 'ready' && ` — v${update.version} ${t('readyToInstall')}`}
+              {update?.state === 'none' && ` — ${t('upToDate')}`}
             </span>
           </div>
           {update?.state === 'ready' ? (
@@ -256,6 +265,16 @@ export function SettingsModal({
               {t('checkForUpdates')}
             </button>
           )}
+        </div>
+
+        <div className="set-row inline">
+          <div className="set-head">
+            <span className="set-title">{t('logs')}</span>
+            <span className="set-sub">{t('logsSub')}</span>
+          </div>
+          <button className="ghost-btn" onClick={() => window.beacon.openLogs()}>
+            {t('openLogsFolder')}
+          </button>
         </div>
       </div>
     </Modal>

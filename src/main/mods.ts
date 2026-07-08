@@ -1,9 +1,53 @@
 import { join, basename } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, rmSync, renameSync, writeFileSync, readFileSync, copyFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { instanceDir, getProfile } from './store'
 
 const UA = 'Beacon-Launcher/0.1 (open-source offline launcher)'
+
+// Small in-memory TTL cache for Modrinth GET responses (search results, project pages). Modrinth
+// rate-limits, and the UI re-queries a lot (debounced typing, re-opening the modpack browser, page
+// flipping back and forth), so caching identical requests for a few minutes avoids 429s. Only
+// successful results are cached — errors propagate uncached so they can be retried immediately.
+const CACHE_TTL = 5 * 60 * 1000
+const apiCache = new Map<string, { at: number; val: unknown }>()
+const inflight = new Map<string, Promise<unknown>>()
+async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = apiCache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_TTL) return hit.val as T
+  // De-dupe concurrent identical requests (e.g. two components mounting at once) — they share one
+  // network call instead of both hammering Modrinth and risking a 429.
+  const dup = inflight.get(key)
+  if (dup) return dup as Promise<T>
+  const p = (async () => {
+    const val = await fn()
+    if (val != null) apiCache.set(key, { at: Date.now(), val }) // don't cache "not found"/failures
+    return val
+  })()
+  inflight.set(key, p)
+  try {
+    return await p
+  } finally {
+    inflight.delete(key)
+  }
+}
+
+// GET a Modrinth URL, transparently retrying on 429 (rate limited). Modrinth sends a `Retry-After`
+// header (seconds) — honour it, otherwise back off exponentially. This is what actually stops the
+// "Modrinth search failed (429)" the user still saw despite caching.
+async function mfetch(url: string): Promise<Response> {
+  const MAX = 4
+  for (let attempt = 0; attempt <= MAX; attempt++) {
+    const res = await fetch(url, { headers: { 'User-Agent': UA } })
+    if (res.status !== 429 || attempt === MAX) return res
+    const retryAfter = Number(res.headers.get('retry-after'))
+    const waitMs = (Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 15) : Math.min(2 ** attempt, 8)) * 1000
+    await new Promise((r) => setTimeout(r, waitMs))
+  }
+  // Unreachable, but satisfies the type checker.
+  return fetch(url, { headers: { 'User-Agent': UA } })
+}
 
 // The four content kinds Modrinth serves, each into its own instance folder.
 export type ContentType = 'mod' | 'resourcepack' | 'datapack' | 'shader'
@@ -50,31 +94,70 @@ export async function searchModrinth(
   type: ContentType = 'mod',
   offset = 0
 ): Promise<{ total: number; hits: ModHit[] }> {
-  const facets: string[][] = [[`project_type:${type}`], [`versions:${mcVersion}`]]
-  if (type === 'mod' && loader !== 'vanilla') facets.push([`categories:${loader}`])
-  const index = ['relevance', 'downloads', 'follows', 'newest', 'updated'].includes(sort) ? sort : 'relevance'
-  const url =
-    `https://api.modrinth.com/v2/search?limit=20&offset=${offset}&index=${index}` +
-    `&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(JSON.stringify(facets))}`
-  const res = await fetch(url, { headers: { 'User-Agent': UA } })
-  if (!res.ok) throw new Error(`Modrinth search failed (${res.status})`)
-  const data = (await res.json()) as any
+  return cached(`search:${type}:${mcVersion}:${loader}:${sort}:${offset}:${query}`, async () => {
+    const facets: string[][] = [[`project_type:${type}`], [`versions:${mcVersion}`]]
+    if (type === 'mod' && loader !== 'vanilla') facets.push([`categories:${loader}`])
+    const index = ['relevance', 'downloads', 'follows', 'newest', 'updated'].includes(sort) ? sort : 'relevance'
+    const url =
+      `https://api.modrinth.com/v2/search?limit=20&offset=${offset}&index=${index}` +
+      `&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(JSON.stringify(facets))}`
+    const res = await mfetch(url)
+    if (!res.ok) throw new Error(`Modrinth search failed (${res.status})`)
+    const data = (await res.json()) as any
+    return { total: data.total_hits || 0, hits: (data.hits || []).map(toHit) }
+  })
+}
+
+function toHit(h: any): ModHit {
   return {
-    total: data.total_hits || 0,
-    hits: (data.hits || []).map(
-      (h: any): ModHit => ({
-        id: h.project_id,
-        title: h.title,
-        description: h.description || '',
-        author: h.author || '',
-        downloads: h.downloads || 0,
-        follows: h.follows || 0,
-        iconUrl: h.icon_url || '',
-        updated: h.date_modified || '',
-        slug: h.slug || ''
-      })
-    )
+    id: h.project_id,
+    title: h.title,
+    description: h.description || '',
+    author: h.author || '',
+    downloads: h.downloads || 0,
+    follows: h.follows || 0,
+    iconUrl: h.icon_url || '',
+    updated: h.date_modified || '',
+    slug: h.slug || ''
   }
+}
+
+// Modrinth modpack search. Unlike mod search this is version/loader-agnostic — a modpack pins its
+// own Minecraft version + loader, which we read from the .mrpack when importing.
+export async function searchModpacks(query: string, sort = 'relevance', offset = 0): Promise<{ total: number; hits: ModHit[] }> {
+  return cached(`modpacks:${sort}:${offset}:${query}`, async () => {
+    const facets: string[][] = [['project_type:modpack']]
+    const index = ['relevance', 'downloads', 'follows', 'newest', 'updated'].includes(sort) ? sort : 'relevance'
+    const url =
+      `https://api.modrinth.com/v2/search?limit=20&offset=${offset}&index=${index}` +
+      `&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(JSON.stringify(facets))}`
+    const res = await mfetch(url)
+    if (!res.ok) throw new Error(`Modrinth search failed (${res.status})`)
+    const data = (await res.json()) as any
+    return { total: data.total_hits || 0, hits: (data.hits || []).map(toHit) }
+  })
+}
+
+// Download a Modrinth modpack's latest .mrpack to a temp file and return its path. The caller
+// (modpack:importFromModrinth) then reads it with readModpack and imports it like a local file.
+export async function downloadModpackToTemp(projectId: string): Promise<string> {
+  const res = await mfetch(`https://api.modrinth.com/v2/project/${projectId}/version`)
+  if (!res.ok) throw new Error(`Modrinth version lookup failed (${res.status})`)
+  const versions = (await res.json()) as any[]
+  // Versions come newest-first; take the newest that actually ships an .mrpack.
+  let file: { url: string; filename: string } | undefined
+  for (const v of versions) {
+    const files = (v.files || []) as any[]
+    const f = files.find((x) => x.primary && /\.mrpack$/i.test(x.filename)) || files.find((x) => /\.mrpack$/i.test(x.filename))
+    if (f) {
+      file = { url: f.url, filename: f.filename }
+      break
+    }
+  }
+  if (!file) throw new Error('This project has no .mrpack file to import.')
+  const dest = join(tmpdir(), `beacon-modpack-${projectId}-${file.filename}`)
+  await download(file.url, dest)
+  return dest
 }
 
 // Copy dropped-in files (drag & drop onto the Mods list) into the content folder.
@@ -151,13 +234,13 @@ export interface ProjectDetail {
 
 // Full Modrinth project (for the in-app detail page): metadata + long description body.
 export async function getProject(idOrSlug: string): Promise<ProjectDetail | null> {
-  const headers = { 'User-Agent': UA }
-  const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(idOrSlug)}`, { headers })
+  return cached(`project:${idOrSlug}`, async () => {
+  const res = await mfetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(idOrSlug)}`)
   if (!res.ok) return null
   const p = (await res.json()) as any
   let author = ''
   try {
-    const tr = await fetch(`https://api.modrinth.com/v2/project/${p.id}/members`, { headers })
+    const tr = await mfetch(`https://api.modrinth.com/v2/project/${p.id}/members`)
     if (tr.ok) {
       const members = (await tr.json()) as any[]
       const owner = members.find((m) => m.role === 'Owner') ?? members[0]
@@ -184,6 +267,7 @@ export async function getProject(idOrSlug: string): Promise<ProjectDetail | null
     discord: p.discord_url || undefined,
     updated: p.updated || ''
   }
+  })
 }
 
 export interface ContentMeta {

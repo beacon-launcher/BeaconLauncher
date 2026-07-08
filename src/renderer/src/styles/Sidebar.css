@@ -1,0 +1,243 @@
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 12px;
+}
+
+/* Draggable divider between the sidebar and the main area (replaces collapse). */
+.sidebar-resize {
+  flex-shrink: 0;
+  width: 7px;
+  margin: 0 -3px;
+  z-index: 6;
+  cursor: col-resize;
+  position: relative;
+}
+
+.sidebar-resize::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  transition: background 0.12s, width 0.12s;
+}
+
+.sidebar-resize:hover::before,
+.sidebar-resize.dragging::before {
+  background: var(--accent);
+  width: 2px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 0 8px 18px;
+}
+
+.side-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--dim);
+  padding: 0 8px 8px;
+}
+
+.profiles {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.profile {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 10px;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s;
+}
+
+.profile:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.profile.active {
+  background: var(--card-hover);
+  color: var(--text);
+}
+
+.pill {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: #4b4b55;
+}
+
+.pill.fabric {
+  background: #d9915b;
+}
+
+.p-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.p-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.p-meta {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.p-name-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--accent);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 0 2px;
+  outline: none;
+}
+
+.import-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 9px;
+  margin-top: 8px;
+  font-weight: 500;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.import-btn:hover,
+.import-btn.dragover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.import-btn.dragover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.side-foot {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.side-foot .new {
+  flex: 1;
+  margin-top: 0;
+}
+
+.gear {
+  width: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.gear:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.side-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 9px 10px;
+  margin-top: 2px;
+  text-align: left;
+}
+
+.side-btn:hover {
+  color: var(--text);
+  background: var(--card);
+}
+
+.side-btn.active {
+  color: var(--text);
+  background: var(--card);
+}
+
+/* ── Drag reorder ── */
+.profile.dragging {
+  opacity: 0.4;
+}
+
+.profile[draggable='true'] {
+  cursor: grab;
+}
+
+/* "Home" entry at the top of the profile list (same row style as a profile). */
+.home-item {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.home-ico {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  transition: color 0.12s;
+}
+
+.home-item:hover .home-ico,
+.home-item.active .home-ico {
+  color: var(--text);
+}

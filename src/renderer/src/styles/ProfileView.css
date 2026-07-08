@@ -1,0 +1,147 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tb-title h1 {
+  margin: 0 0 2px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.tb-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tb-edit {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  border-radius: 7px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+
+.tb-title:hover .tb-edit {
+  opacity: 1;
+}
+
+.tb-edit:hover {
+  color: var(--text);
+  background: var(--input);
+}
+
+.tb-name-input {
+  margin: 0 0 2px;
+  font-size: 19px;
+  font-weight: 700;
+  background: var(--input);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 2px 10px;
+  outline: none;
+}
+
+/* Second line under the name: loader + version + playtime, always kept on a single line
+   (name is line 1, this is line 2 — never a third). */
+.meta {
+  display: block;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+/* Playtime sits inline after the loader/version, separated by a gap (no dot). */
+.playtime {
+  margin-left: 12px;
+  font-size: 10.5px;
+  color: var(--dim);
+  text-transform: none;
+}
+
+.play {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 30px;
+  font-weight: 700;
+  font-size: 14px;
+  transition: background 0.12s;
+}
+
+.play:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.play:disabled {
+  opacity: 0.5;
+}
+
+.play.stop {
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  color: #fff;
+}
+
+/* Installing button on the profile page — click cancels. */
+.play.installing {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.play.installing:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.play.installing .btn-x {
+  margin-left: 7px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ── Added: topbar actions, rename, loaders, settings tab ── */
+.tb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.rename {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 9px 10px;
+  outline: none;
+  font: inherit;
+}

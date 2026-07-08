@@ -50,10 +50,9 @@ export function timeAgo(iso: string): string {
     [60, 'minute']
   ] as [number, string][]) {
     const n = Math.floor(s / sec)
-    if (n >= 1) {
-      const unit = n > 1 ? t(key + 's') : t(key)
-      return `${n} ${unit} ${t('ago')}`
-    }
+    // i18next picks the right plural form per language (en: 1/other; ru: 1/2-4/5+), and the
+    // phrase itself lives in the locale so word order stays translatable.
+    if (n >= 1) return t(key, { count: n })
   }
   return t('justNow')
 }

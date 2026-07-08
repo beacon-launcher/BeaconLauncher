@@ -1,0 +1,119 @@
+/* ── Custom version dropdown ── */
+.vd {
+  position: relative;
+}
+
+.vd-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.vd-btn:hover {
+  border-color: var(--muted);
+}
+
+/* Opens upward (above the trigger) — used in the New-profile dialog. */
+.vd-panel.up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+}
+
+.vd-search {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  outline: none;
+}
+
+.vd-search:focus {
+  border-color: var(--accent);
+}
+
+/* "Show all versions" footer button (eye icon) — styled like the reference. */
+.vd-showall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  padding: 9px 0 3px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.vd-showall:hover {
+  color: var(--text);
+}
+
+/* Fixed height so toggling "show all" never resizes the panel (no jump). Kept short. */
+.vd-list {
+  height: 148px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.vd-item:hover {
+  background: var(--card-hover);
+}
+
+.vd-item.on {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.vd-type {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--dim);
+}
+
+.vd-item.on .vd-type {
+  color: var(--on-accent);
+  opacity: 0.7;
+}
+
+.vd-empty {
+  color: var(--dim);
+  padding: 12px 10px;
+  font-size: 12.5px;
+}
+
+.ap-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

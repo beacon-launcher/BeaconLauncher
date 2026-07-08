@@ -1,5 +1,6 @@
+import '../styles/CreateProfileModal.css'
 import { useEffect, useMemo, useState } from 'react'
-import type { Loader, Profile } from '../types'
+import type { Loader } from '../types'
 import { LOADERS } from '../helpers'
 import { t } from '../i18n'
 import { Spinner, MonoAvatar } from './ui'
@@ -12,7 +13,7 @@ export function CreateProfileModal({
 }: {
   defaultName: string
   onClose: () => void
-  onCreated: (p: Profile) => void
+  onCreated: (p: { id: string }) => void
 }): React.JSX.Element {
   const [name, setName] = useState('')
   const [versions, setVersions] = useState<{ id: string; type: string }[]>([])

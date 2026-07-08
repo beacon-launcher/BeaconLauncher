@@ -1,3 +1,4 @@
+import '../styles/Footer.css'
 import { t } from '../i18n'
 
 export function InstallsPanel({

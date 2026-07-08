@@ -76,6 +76,7 @@ export function installMock(): void {
   let updateCb: ((s: unknown) => void) | null = null
   ;(window as unknown as { beacon: unknown }).beacon = {
     appVersion: async () => '0.1.0',
+    openLogs: async () => '',
     checkUpdate: async () => {
       updateCb?.({ state: 'checking' })
       setTimeout(() => updateCb?.({ state: 'available', version: '0.2.0' }), 700)
@@ -138,6 +139,8 @@ export function installMock(): void {
     pickImage: async () => null,
     pickModpack: async () => null,
     importModpack: async () => ({ ok: false, error: 'mock' }),
+    searchModpacks: async () => ({ ok: true, total: 3, hits: hits.map((x) => ({ ...x, id: `modpack-${x.id}` })) }),
+    importModpackFromModrinth: async () => ({ ok: true, id: 'mock' }),
     imageDataUrl: async () => null,
     renameProfile: async () => true,
     reorderProfiles: async () => true,
@@ -273,6 +276,7 @@ export function installMock(): void {
     },
     pickJava: async () => null,
     detectJava: async () => ({ ok: false }),
+    detectAllJava: async () => ({}),
     installJava: async () => ({ ok: false, error: 'mock' }),
     onStatus: () => () => {},
     onProgress: () => () => {},

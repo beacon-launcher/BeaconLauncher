@@ -1,0 +1,107 @@
+/* Rendered Modrinth project descriptions (see components/Markdown.tsx). */
+.md-body {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.md-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  color: var(--text);
+  line-height: 1.3;
+  margin: 1.1em 0 0.5em;
+}
+
+.md-body h1 { font-size: 20px; }
+.md-body h2 { font-size: 17px; }
+.md-body h3 { font-size: 15px; }
+.md-body h4 { font-size: 13.5px; }
+
+.md-body p {
+  margin: 0.6em 0;
+}
+
+.md-body a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.md-body a:hover {
+  text-decoration: underline;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0.6em 0;
+  padding-left: 1.4em;
+}
+
+.md-body li {
+  margin: 0.25em 0;
+}
+
+.md-body code {
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font: 12px ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+}
+
+.md-body pre {
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.md-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.md-body blockquote {
+  margin: 0.6em 0;
+  padding: 2px 14px;
+  border-left: 3px solid var(--line);
+  color: var(--dim);
+}
+
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 1.2em 0;
+}
+
+.md-body table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+}
+
+.md-body img[align='center'],
+.md-body center {
+  display: block;
+  margin-inline: auto;
+  text-align: center;
+}

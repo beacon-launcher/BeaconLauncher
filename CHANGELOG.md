@@ -21,6 +21,40 @@ Group entries under: Added · Changed · Fixed · Removed · Security.
 
 ### Fixed
 
+## [0.3.0] - 2026-07-09
+
+### Added
+
+- Home page (shown when no profile is selected): total playtime plus a Modrinth **modpack browser**
+  — search modpacks, open a project page with its full rendered description, and install one to
+  create a profile.
+- **Persistent logging** to `logs/launcher.log` (Settings → *Open logs folder*) covering installs,
+  game output and errors, so failures can be diagnosed after the fact.
+- Proper **localization** built on i18next, with correct plural forms (incl. Russian) and languages
+  bundled from the [Translations](https://github.com/beacon-launcher/Translations) repository.
+- Automatic **Java detection** on first run — an installed JDK is preferred over downloading one.
+- A **Home** button at the top of the sidebar.
+- Rendered (Markdown/HTML) project descriptions on content pages, matching how Modrinth shows them.
+
+### Changed
+
+- Modpack import now lives on the Home page instead of the New-profile dialog.
+- Modrinth requests are cached and retried with backoff on rate limits (`429`).
+- Download progress animates smoothly; each install phase is written to the log.
+- Content and modpack detail pages are closed with the top-bar Back arrow (no in-page Back button).
+- The monolithic stylesheet was split into per-component files.
+
+### Fixed
+
+- Escape cancels an in-progress profile rename (and an empty rename no longer commits).
+- Switching language applies on the first click and updates every view.
+- Tooltips no longer flicker when moving within an element and stay within the window.
+- The sort control matches the search-box height and keeps a fixed width.
+
+### Removed
+
+- The rename icon in the Accounts modal.
+
 ## [0.2.0] - 2026-07-08
 
 ### Added
@@ -56,6 +90,7 @@ Group entries under: Added · Changed · Fixed · Removed · Security.
 - Cross-platform installers (Windows NSIS, macOS dmg/zip, Linux AppImage/deb) via electron-builder.
 - In-app auto-update from GitHub Releases (electron-updater).
 
-[Unreleased]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/beacon-launcher/BeaconLauncher/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/beacon-launcher/BeaconLauncher/releases/tag/v0.1.0

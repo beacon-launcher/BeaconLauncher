@@ -1,0 +1,128 @@
+/* Modrinth modpack browser — search results list + pager (Home page). */
+.mp-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.mp-search {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 9px 12px;
+  outline: none;
+}
+
+.mp-search:focus {
+  border-color: var(--accent);
+}
+
+.mp-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  padding: 28px 0;
+}
+
+.mp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mp-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--text);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.mp-row:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--card-hover);
+}
+
+.mp-row:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mp-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.mp-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mp-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-desc {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.mp-dl {
+  white-space: nowrap;
+}
+
+.mp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.mp-page {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mp-row {
+  cursor: pointer;
+}
+
+.mp-install {
+  flex-shrink: 0;
+  align-self: center;
+}

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Account, AccountsState, Profile, Settings } from './types'
-import { cleanConsole, CONSOLE_ART_KEY } from './helpers'
+import { cleanConsole, CONSOLE_ART_KEY, JAVA_KEYS } from './helpers'
 import { t, setLanguage } from './i18n'
 import { Tooltip } from './components/Modal'
 import { Header } from './components/Header'
@@ -10,6 +10,7 @@ import { InstallsPanel } from './components/InstallsPanel'
 import { AccountsModal } from './components/AccountsModal'
 import { SettingsModal } from './components/SettingsModal'
 import { CreateProfileModal } from './components/CreateProfileModal'
+import { HomeView } from './components/HomeView'
 
 type Phase = 'idle' | 'install' | 'running'
 interface UpdateStatus {
@@ -23,6 +24,7 @@ interface UpdateStatus {
 export default function App(): React.JSX.Element {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailBack, setDetailBack] = useState<null | (() => void)>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -111,6 +113,10 @@ export default function App(): React.JSX.Element {
 
   const selectedLiveMs = selected && sessionStartRef.current[selected.id] ? Date.now() - sessionStartRef.current[selected.id] : 0
 
+  // A content/modpack detail page registers its "close" here so the top-bar Back arrow closes the
+  // detail first (there's no in-page Back button anymore) before falling back to profile navigation.
+  const registerDetailBack = useCallback((fn: (() => void) | null) => setDetailBack(() => fn), [])
+
   const applyNav = (id: string | null): void => {
     setSelectedId(id)
     setShowSettings(false)
@@ -124,6 +130,11 @@ export default function App(): React.JSX.Element {
     applyNav(id)
   }
   const goBack = (): void => {
+    // A detail page open? Close that first (it has no in-page Back button).
+    if (detailBack) {
+      detailBack()
+      return
+    }
     const s = navRef.current
     if (s.idx <= 0) return
     setNav({ ...s, idx: s.idx - 1 })
@@ -142,7 +153,23 @@ export default function App(): React.JSX.Element {
       setSelectedId(null)
       setNav({ list: [null], idx: 0 })
     })
-    window.beacon.getSettings().then(setSettings)
+    window.beacon.getSettings().then(async (s) => {
+      setSettings(s)
+      // First run: if no Java slot is set at all, auto-detect installed JDKs once and fill the
+      // empty slots, so an existing system Java is preferred over downloading Mojang's runtime.
+      // Never touches a slot the user has already set.
+      const majors = [8, 17, 21, 25]
+      if (majors.every((m) => !s[JAVA_KEYS[m]])) {
+        const found = await window.beacon.detectAllJava(majors)
+        const patch: Partial<Settings> = {}
+        for (const m of majors) if (found[m]) patch[JAVA_KEYS[m]] = found[m] as never
+        if (Object.keys(patch).length) {
+          const next = { ...s, ...patch }
+          setSettings(next)
+          window.beacon.saveSettings(next)
+        }
+      }
+    })
     const applyAccounts = (s: AccountsState): void => {
       setAccounts(s.accounts)
       setActiveId(s.activeId)
@@ -256,12 +283,15 @@ export default function App(): React.JSX.Element {
   }
 
   const commitRename = async (): Promise<void> => {
-    if (renamingId) {
-      await window.beacon.renameProfile(renamingId, renameValue)
+    // Ignore an empty/whitespace name (e.g. field cleared then clicked away) — keep the old name.
+    if (renamingId && renameValue.trim()) {
+      await window.beacon.renameProfile(renamingId, renameValue.trim())
       await refreshProfiles()
     }
     setRenamingId(null)
   }
+  // Escape: leave edit mode without saving.
+  const cancelRename = (): void => setRenamingId(null)
 
   const drop = async (targetId: string): Promise<void> => {
     if (!dragId || dragId === targetId) return setDragId(null)
@@ -295,9 +325,6 @@ export default function App(): React.JSX.Element {
   }
   const addOfflineAccount = async (name: string): Promise<void> => {
     applyAccounts(await window.beacon.addOfflineAccount(name))
-  }
-  const renameAccount = async (id: string, name: string): Promise<void> => {
-    applyAccounts(await window.beacon.renameAccount(id, name))
   }
   const switchAccount = async (id: string | null): Promise<void> => {
     applyAccounts(await window.beacon.setActiveAccount(id))
@@ -355,6 +382,7 @@ export default function App(): React.JSX.Element {
       <Header
         navIdx={nav.idx}
         navLen={nav.list.length}
+        canBack={detailBack !== null || nav.idx > 0}
         goBack={goBack}
         goForward={goForward}
         activeAccountName={activeAccount?.name ?? null}
@@ -393,6 +421,9 @@ export default function App(): React.JSX.Element {
           renameValue={renameValue}
           setRenameValue={setRenameValue}
           commitRename={commitRename}
+          cancelRename={cancelRename}
+          onHome={() => pushNav(null)}
+          atHome={selectedId === null}
         />
 
       <main className="main">
@@ -412,9 +443,21 @@ export default function App(): React.JSX.Element {
             }}
             onFooter={setFooter}
             gotoRef={footerGoto}
+            onDetailBack={registerDetailBack}
           />
         ) : (
-          <div className="empty" />
+          <HomeView
+            profiles={profiles}
+            userName={activeAccount?.name ?? settings?.username ?? 'Player'}
+            onError={setToast}
+            onCreated={async (p) => {
+              await refreshProfiles(p.id)
+              pushNav(p.id)
+            }}
+            onFooter={setFooter}
+            gotoRef={footerGoto}
+            onDetailBack={registerDetailBack}
+          />
         )}
 
         {showInstalls && installs.length > 0 && (
@@ -565,10 +608,16 @@ export default function App(): React.JSX.Element {
           onSelect={switchAccount}
           onAddMicrosoft={addAccount}
           onAddOffline={addOfflineAccount}
-          onRename={renameAccount}
           onRemove={removeAccount}
           onClose={() => setShowAccounts(false)}
         />
+      )}
+
+      {!settings && (
+        <div className="app-splash">
+          <div className="dot big" />
+          <span className="splash-spin" />
+        </div>
       )}
 
       <Tooltip />

@@ -1,0 +1,509 @@
+/* Java slots (Settings) */
+.jslot {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--bg);
+}
+
+.jslot-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.jslot-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jslot-input input {
+  flex: 1;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 11px;
+  outline: none;
+}
+
+.jslot-input input:focus {
+  border-color: var(--accent);
+}
+
+.jcheck {
+  width: 20px;
+  text-align: center;
+  color: var(--dim);
+}
+
+.jcheck.ok {
+  color: var(--accent);
+}
+
+.jcheck.bad {
+  color: var(--dim);
+}
+
+.jslot-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.jslot-btns button {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.jslot-btns button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.jslot-btns button:disabled {
+  opacity: 0.5;
+}
+
+.jslot-btns .jclear {
+  margin-left: auto;
+}
+
+.settings-body {
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Settings modal ── */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 28px; /* plain spacing between settings — no separator lines */
+}
+
+.set-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.set-row.inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.set-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.set-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.set-sub {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.set-row.inline .toggle {
+  flex-shrink: 0;
+}
+
+.jslots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jslots .jslot {
+  margin-top: 0;
+}
+
+.loaders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.loader-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 9px 16px;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.build-select {
+  margin-top: 10px;
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.build-select:focus {
+  border-color: var(--accent);
+}
+
+.loader-btn:hover:not(:disabled):not(.on) {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.loader-btn.on {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.loader-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lcheck {
+  font-weight: 700;
+}
+
+.soon {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+/* ── Accent swatches ── */
+/* ── Accent preset cards (mini-previews tinted with each colour) ── */
+.accent-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.accent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.ac-preview {
+  position: relative;
+  height: 58px;
+  border-radius: 10px;
+  background: var(--input);
+  border: 1.5px solid var(--line);
+  overflow: hidden;
+  padding: 10px 11px;
+  transition: border-color 0.12s;
+}
+
+.accent-card:hover .ac-preview {
+  border-color: var(--muted);
+}
+
+.accent-card.on .ac-preview {
+  border-color: var(--c);
+}
+
+.ac-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  float: left;
+  margin-right: 9px;
+}
+
+.ac-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.ac-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.ac-lines span {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.ac-lines span:nth-child(1) {
+  width: 70%;
+}
+
+.ac-lines span.hi {
+  width: 90%;
+  background: var(--c);
+}
+
+.ac-lines span:nth-child(3) {
+  width: 55%;
+}
+
+.ac-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: var(--c);
+}
+
+.ac-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--c);
+  color: #0b0b0f;
+}
+
+.ac-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--c);
+  text-align: center;
+}
+
+/* The neutral "Default" (white) card reads better with a muted label. */
+.accent-card[style*='#ffffff'] .ac-label {
+  color: var(--muted);
+}
+
+.accent-custom-wrap {
+  position: relative;
+}
+
+.accent-card.custom {
+  width: 100%;
+}
+
+.accent-card.custom .ac-preview {
+  display: grid;
+  place-items: center;
+}
+
+.accent-card.custom .ac-plus {
+  font-size: 22px;
+  color: var(--dim);
+  line-height: 1;
+}
+
+.accent-card.custom .ac-label {
+  color: var(--muted);
+}
+
+.accent-card.custom.on .ac-label {
+  color: var(--c);
+}
+
+/* ── Memory (filled slider + editable MB field) ── */
+.mem-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mem-row input[type='range'] {
+  flex: 1;
+}
+
+.mem-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 10px 0 0;
+  flex-shrink: 0;
+}
+
+.mem-input input {
+  width: 74px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 8px 4px 8px 11px;
+  outline: none;
+  text-align: right;
+  font: inherit;
+  -moz-appearance: textfield;
+}
+
+.mem-input input::-webkit-outer-spin-button,
+.mem-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mem-input:focus-within {
+  border-color: var(--accent);
+}
+
+.mem-unit {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+/* ── Theme picker cards (Settings) ── */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+}
+
+.theme-card.on {
+  color: var(--text);
+}
+
+.tc-preview {
+  position: relative;
+  display: flex;
+  height: 58px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 2px solid var(--line);
+}
+
+.theme-card.on .tc-preview {
+  border-color: var(--sel);
+}
+
+.tc-side {
+  width: 32%;
+}
+
+.tc-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.tc-main i {
+  height: 5px;
+  border-radius: 3px;
+}
+
+.tc-main i:nth-child(2) {
+  width: 70%;
+}
+
+.tc-main i:nth-child(3) {
+  width: 45%;
+}
+
+/* Dark preview */
+.tc-preview.dark {
+  background: #1b1b21;
+}
+
+.tc-preview.dark .tc-side {
+  background: #131317;
+}
+
+.tc-preview.dark .tc-main i {
+  background: #3a3a42;
+}
+
+/* Light preview */
+.tc-preview.light {
+  background: #ffffff;
+}
+
+.tc-preview.light .tc-side {
+  background: #ececef;
+}
+
+.tc-preview.light .tc-main i {
+  background: #d9d9df;
+}
+
+/* System preview — mirrors the actual OS appearance (dark by default, light when the OS is). */
+.tc-preview.system {
+  background: #1b1b21;
+}
+
+.tc-preview.system .tc-side {
+  background: #131317;
+}
+
+.tc-preview.system .tc-main i {
+  background: #3a3a42;
+}
+
+@media (prefers-color-scheme: light) {
+  .tc-preview.system {
+    background: #ffffff;
+  }
+  .tc-preview.system .tc-side {
+    background: #ececef;
+  }
+  .tc-preview.system .tc-main i {
+    background: #d9d9df;
+  }
+}
+
+.tc-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--sel);
+  color: var(--bg);
+}

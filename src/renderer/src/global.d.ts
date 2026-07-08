@@ -4,6 +4,7 @@ declare global {
   interface Window {
     beacon: {
       appVersion(): Promise<string>
+      openLogs(): Promise<string>
       checkUpdate(): Promise<{ ok: boolean; dev?: boolean; error?: string }>
       downloadUpdate(): Promise<{ ok: boolean; manual?: boolean; error?: string }>
       installUpdate(): Promise<{ ok: boolean }>
@@ -24,6 +25,8 @@ declare global {
       pickImage(): Promise<string | null>
       pickModpack(): Promise<string | null>
       importModpack(filePath: string): Promise<{ ok: boolean; id?: string; error?: string }>
+      searchModpacks(query: string, sort: string, offset: number): Promise<{ ok: boolean; hits?: ModHit[]; total?: number; error?: string }>
+      importModpackFromModrinth(projectId: string): Promise<{ ok: boolean; id?: string; error?: string }>
       getPathForFile(file: File): string
       imageDataUrl(path: string): Promise<string | null>
       writeClipboard(text: string): Promise<boolean>
@@ -74,6 +77,7 @@ declare global {
       addContentFiles(profileId: string, type: ContentType, paths: string[]): Promise<string[]>
       pickJava(): Promise<string | null>
       detectJava(major: number): Promise<{ ok: boolean; path?: string }>
+      detectAllJava(majors: number[]): Promise<Record<number, string>>
       installJava(major: number): Promise<{ ok: boolean; path?: string; error?: string }>
       onStatus(cb: (s: { phase: string; text: string }) => void): () => void
       onProgress(cb: (p: { percent: number }) => void): () => void

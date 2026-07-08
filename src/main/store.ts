@@ -11,7 +11,7 @@ export interface Settings {
   accentColor: string
   theme: 'system' | 'dark' | 'light'
   discordRpc: boolean
-  language: 'en' | 'ru'
+  language: string // language code, e.g. 'en' | 'ru' | 'uk' — resolved against bundled locales, falls back to 'en'
   // Optional manual overrides per Java major (empty = auto-download the one the version needs).
   java8: string
   java17: string

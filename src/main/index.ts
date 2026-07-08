@@ -7,13 +7,14 @@ import './net' // sets a tuned global undici dispatcher for the main process's M
 import * as store from './store'
 import * as auth from './auth'
 import { listVersions, launchGame, type LaunchAccount } from './game'
-import { detectJava } from './java'
+import { detectJava, detectAllJava } from './java'
 import * as installer from './installer'
 import * as loaders from './loaders'
 import * as modpack from './modpack'
 import * as discord from './discord'
 import * as mods from './mods'
 import * as updater from './updater'
+import { log, logsDir } from './logger'
 
 app.setName('Beacon Launcher')
 // Keep the data dir at its original "Beacon" location so renaming the app doesn't orphan
@@ -57,21 +58,43 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message || e.name : typeof e === 'string' ? e : JSON.stringify(e)
 }
 
+// Wrap an install progress callback so each new PHASE (not every byte-count tick) is written to the
+// log — that's what makes a stuck download legible after the fact ("got to Downloading assets 40%
+// then failed"). The MB counter in the text is stripped so we only log on real phase changes.
+function phaseLogger(scope: string, label: string): (percent: number, text: string) => void {
+  let last = ''
+  return (percent, text) => {
+    const phase = text.split(' — ')[0].replace(/[…✓]/g, '').trim()
+    if (phase && phase !== last) {
+      last = phase
+      log.info(scope, `${label}: ${percent}% — ${phase}`)
+    }
+  }
+}
+
 // Download a freshly-created profile in the background (Minecraft + loader + Java) so it's
 // ready to play. Progress is reported per-profile via 'profileState'.
 function backgroundInstall(p: store.Profile): void {
   pstate(p.id, 'installing', 0, 'Preparing…')
+  log.info('install', `background install started: "${p.name}" (${p.mcVersion} / ${p.loader}${p.loaderVersion ? ' ' + p.loaderVersion : ''})`)
+  const logProg = phaseLogger('install', p.name)
   installer
-    .prepareInstall(p, store.getSettings(), (percent, text) => pstate(p.id, 'installing', percent, text))
+    .prepareInstall(p, store.getSettings(), (percent, text) => {
+      logProg(percent, text)
+      pstate(p.id, 'installing', percent, text)
+    })
     .then((ready) => {
       store.setInstallResult(p.id, ready.versionId, ready.java)
+      log.info('install', `background install finished: "${p.name}" → version ${ready.versionId}`)
       pstate(p.id, 'ready', 100, 'Ready')
     })
     .catch((e) => {
       if (isCancelled(e)) {
+        log.info('install', `background install cancelled: "${p.name}"`)
         pstate(p.id, 'idle', 0, '')
         return
       }
+      log.error('install', `background install failed: "${p.name}" (${p.mcVersion} / ${p.loader}) — ${errMsg(e)}`)
       pstate(p.id, 'error', 0, 'Install failed')
       send('toast', { text: `Install failed: ${errMsg(e)}` })
     })
@@ -80,17 +103,21 @@ function backgroundInstall(p: store.Profile): void {
 // Import a modpack into a freshly-created profile (download its mods/config, then install base).
 function backgroundImport(p: store.Profile, filePath: string): void {
   pstate(p.id, 'installing', 0, 'Importing…')
+  log.info('import', `modpack import started: "${p.name}" from ${filePath}`)
   installer
     .importModpack(p, store.getSettings(), filePath, (percent, text) => pstate(p.id, 'installing', percent, text))
     .then((ready) => {
       store.setInstallResult(p.id, ready.versionId, ready.java)
+      log.info('import', `modpack import finished: "${p.name}" → version ${ready.versionId}`)
       pstate(p.id, 'ready', 100, 'Ready')
     })
     .catch((e) => {
       if (isCancelled(e)) {
+        log.info('import', `modpack import cancelled: "${p.name}"`)
         pstate(p.id, 'idle', 0, '')
         return
       }
+      log.error('import', `modpack import failed: "${p.name}" — ${errMsg(e)}`)
       pstate(p.id, 'error', 0, 'Import failed')
       send('toast', { text: `Import failed: ${errMsg(e)}` })
     })
@@ -122,6 +149,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  log.info('app', `Beacon Launcher ${app.getVersion()} starting — ${process.platform} ${process.arch}, Electron ${process.versions.electron}`)
   createWindow()
   discord.setEnabled(store.getSettings().discordRpc !== false)
   discord.setActivity({ details: 'Idling' })
@@ -136,6 +164,8 @@ app.on('window-all-closed', () => {
 
 // ── app / updates ─────────────────────────────────────────────────────────
 ipcMain.handle('app:version', () => app.getVersion())
+// Open the folder holding launcher.log so users can grab it for a bug report.
+ipcMain.handle('logs:open', () => shell.openPath(logsDir()))
 ipcMain.handle('update:check', () => updater.checkForUpdate())
 ipcMain.handle('update:download', () => updater.downloadUpdate())
 ipcMain.handle('update:install', () => updater.quitAndInstall())
@@ -277,6 +307,7 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
   if (!profile) return { ok: false, error: 'Profile not found' }
   try {
     const settings = store.getSettings()
+    log.info('launch', `play pressed: "${profile.name}" (${profile.mcVersion} / ${profile.loader}${profile.loaderVersion ? ' ' + profile.loaderVersion : ''})`)
 
     // Fast path: if this profile is already installed and the cached files are still on disk
     // AND non-empty, launch straight away — no re-download/validation. The non-empty check
@@ -296,11 +327,18 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
       : ''
     let ready: { dir: string; versionId: string; java: string }
     if (profile.installed && profile.versionId && cachedJava && versionJson && nonEmpty(versionJson)) {
+      log.info('launch', `using cached install (version ${profile.versionId})`)
       ready = { dir: store.instanceDir(profile.id), versionId: profile.versionId, java: cachedJava }
     } else {
+      log.info('launch', 'no valid cached install — running installer before launch')
       pstate(profile.id, 'installing', 0, 'Preparing…')
-      ready = await installer.prepareInstall(profile, settings, (percent, text) => pstate(profile.id, 'installing', percent, text))
+      const logProg = phaseLogger('install', profile.name)
+      ready = await installer.prepareInstall(profile, settings, (percent, text) => {
+        logProg(percent, text)
+        pstate(profile.id, 'installing', percent, text)
+      })
       store.setInstallResult(profile.id, ready.versionId, ready.java)
+      log.info('launch', `install ready → version ${ready.versionId}, java ${ready.java}`)
     }
 
     // Licensed sign-in: refresh the token (silently) right before launch so the game gets a
@@ -331,12 +369,23 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
     child = await launchGame({ ...ready, settings, account })
     const startedAt = Date.now()
     pstate(profile.id, 'running', 100, 'Running')
+    log.info('game', `launched "${profile.name}" (${account?.licensed ? 'licensed' : 'offline'} as ${account?.name ?? '—'})`)
     // Discord shows the profile only while it's actually running (Idling otherwise).
     discord.setActivity({ details: 'Playing', state: profile.name })
-    child.stdout?.on('data', (d: Buffer) => send('log', d.toString()))
-    child.stderr?.on('data', (d: Buffer) => send('log', d.toString()))
+    // Game stdout/stderr → both the in-app console and the log file (crash reports live here).
+    child.stdout?.on('data', (d: Buffer) => {
+      const s = d.toString()
+      send('log', s)
+      log.raw(s)
+    })
+    child.stderr?.on('data', (d: Buffer) => {
+      const s = d.toString()
+      send('log', s)
+      log.raw(s)
+    })
     child.on('exit', (code) => {
       store.addPlaytime(profile.id, Date.now() - startedAt)
+      log.info('game', `"${profile.name}" exited with code ${code ?? 0}`)
       pstate(profile.id, 'ready', 100, `Closed (exit ${code ?? 0})`)
       send('profilesChanged', null) // playtime updated → let the UI re-read profiles
       discord.setActivity({ details: 'Idling' })
@@ -345,10 +394,12 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
     return { ok: true }
   } catch (e) {
     if (isCancelled(e)) {
+      log.info('launch', `cancelled: "${profile.name}"`)
       pstate(profile.id, 'idle', 0, '')
       return { ok: false, error: 'cancelled' }
     }
     const msg = errMsg(e)
+    log.error('launch', `failed: "${profile.name}" (${profile.mcVersion} / ${profile.loader}) — ${msg}`)
     pstate(profile.id, 'error', 0, 'Failed')
     send('toast', { text: msg || 'Launch failed' })
     return { ok: false, error: msg || 'launch failed' }
@@ -372,6 +423,9 @@ ipcMain.handle('java:detect', async (_e, major: number) => {
   const path = await detectJava(major)
   return { ok: !!path, path: path ?? undefined }
 })
+
+// Auto-detect: one scan for every slotable major (used on first run to fill empty slots).
+ipcMain.handle('java:detectAll', async (_e, majors: number[]) => detectAllJava(majors))
 
 ipcMain.handle('java:install', async (_e, major: number) => {
   try {
@@ -471,6 +525,30 @@ ipcMain.handle('dialog:pickModpack', async () => {
 
 ipcMain.handle('modpack:import', async (_e, filePath: string) => {
   try {
+    const info = await modpack.readModpack(filePath)
+    const p = store.addProfile(info.name, info.mcVersion, info.loader)
+    backgroundImport(p, filePath)
+    return { ok: true, id: p.id }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
+
+// Browse Modrinth modpacks from the New-profile dialog (version/loader-agnostic search).
+ipcMain.handle('modpack:search', async (_e, a: { query: string; sort?: string; offset?: number }) => {
+  try {
+    const r = await mods.searchModpacks(a.query, a.sort, a.offset)
+    return { ok: true, hits: r.hits, total: r.total }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
+
+// Create a profile from a chosen Modrinth modpack: download its latest .mrpack, then import it
+// through the exact same path as a local .mrpack (readModpack → addProfile → backgroundImport).
+ipcMain.handle('modpack:importFromModrinth', async (_e, a: { projectId: string }) => {
+  try {
+    const filePath = await mods.downloadModpackToTemp(a.projectId)
     const info = await modpack.readModpack(filePath)
     const p = store.addProfile(info.name, info.mcVersion, info.loader)
     backgroundImport(p, filePath)

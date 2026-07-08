@@ -1,3 +1,4 @@
+import '../styles/ColorPicker.css'
 import { useEffect, useRef, useState } from 'react'
 import { hexToHsv, hsvToHex } from '../helpers'
 

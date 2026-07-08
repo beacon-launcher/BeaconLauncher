@@ -19,7 +19,7 @@ export interface Settings {
   accentColor: string
   theme: 'system' | 'dark' | 'light'
   discordRpc: boolean
-  language: 'en' | 'ru'
+  language: string // language code, e.g. 'en' | 'ru' | 'uk'
   java8: string
   java17: string
   java21: string

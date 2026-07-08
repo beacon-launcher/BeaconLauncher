@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import '../styles/Sidebar.css'
+import { useRef } from 'react'
 import type { Profile } from '../types'
 import { t } from '../i18n'
 import { Avatar, GearIcon } from './ui'
@@ -23,7 +24,10 @@ export function Sidebar({
   renamingId,
   renameValue,
   setRenameValue,
-  commitRename
+  commitRename,
+  cancelRename,
+  onHome,
+  atHome
 }: {
   profiles: Profile[]
   selectedId: string | null
@@ -45,10 +49,24 @@ export function Sidebar({
   renameValue: string
   setRenameValue: (v: string) => void
   commitRename: () => void
+  cancelRename: () => void
+  onHome: () => void
+  atHome: boolean
 }): React.JSX.Element {
+  // Escape sets renamingId to null, which unmounts the input and fires onBlur → commitRename.
+  // This flag tells that blur to skip the commit so Escape truly cancels.
+  const cancelling = useRef(false)
   return (
     <>
       <aside className="sidebar" style={{ width: sidebarWidth }}>
+        <button className={`profile home-item ${atHome ? 'active' : ''}`} onClick={onHome}>
+          <span className="home-ico">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+            </svg>
+          </span>
+          <span className="p-name">{t('home')}</span>
+        </button>
         <div className="profiles">
           {profiles.map((p) => (
             <div
@@ -71,10 +89,19 @@ export function Sidebar({
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    onBlur={commitRename}
+                    onBlur={() => {
+                      if (cancelling.current) {
+                        cancelling.current = false
+                        return
+                      }
+                      commitRename()
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') commitRename()
-                      if (e.key === 'Escape') setRenameValue('')
+                      if (e.key === 'Escape') {
+                        cancelling.current = true
+                        cancelRename()
+                      }
                     }}
                   />
                 ) : (
@@ -118,7 +145,7 @@ export function Sidebar({
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span className="lbl">New profile</span>
+            <span className="lbl">{t('newProfile')}</span>
           </button>
           <button className="gear" onClick={onSettings} data-tip={t('settings')}>
             <GearIcon />
