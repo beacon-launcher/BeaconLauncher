@@ -11,6 +11,7 @@ export interface Settings {
   accentColor: string
   theme: 'system' | 'dark' | 'light'
   discordRpc: boolean
+  language: 'en' | 'ru'
   // Optional manual overrides per Java major (empty = auto-download the one the version needs).
   java8: string
   java17: string
@@ -65,7 +66,7 @@ export const profilesRoot = (): string => join(dataDir(), 'profiles')
 export const avatarsRoot = (): string => join(dataDir(), 'avatars')
 export const instanceDir = (id: string): string => join(profilesRoot(), getProfile(id)?.dir ?? id)
 
-const DEFAULT_SETTINGS: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
+const DEFAULT_SETTINGS: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, language: 'en', java8: '', java17: '', java21: '', java25: '' }
 
 export function getSettings(): Settings {
   try {

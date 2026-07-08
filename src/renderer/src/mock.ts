@@ -8,7 +8,7 @@ export function installMock(): void {
     { id: '1', name: 'Fabric 1.20.1', mcVersion: '1.20.1', loader: 'fabric', created: 0, playtimeMs: 12_240_000 },
     { id: '2', name: 'Vanilla 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', created: 0 }
   ]
-  const settings: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, java8: '', java17: '', java21: '', java25: '' }
+  const settings: Settings = { username: 'Player', maxMemory: 2048, accentColor: '#ffffff', theme: 'system', discordRpc: true, language: 'en', java8: '', java17: '', java21: '', java25: '' }
   type Acc = { id: string; name: string; type: 'offline' | 'msa' }
   let accountState: { accounts: Acc[]; activeId: string | null } = {
     accounts: [
