@@ -37,6 +37,8 @@ export interface Profile {
   playtimeMs?: number // total time the game has been running for this profile
   dir: string
   avatar?: string // absolute path to a custom avatar image; empty = generated identicon
+  avatarUrl?: string // public URL of the avatar source (e.g. a modpack's Modrinth icon), used for Discord presence
+  maxMemory?: number // per-profile RAM override (MB); undefined = use the global setting
 }
 
 // A launcher account. Either an offline nickname (cracked-style, no auth) or a licensed
@@ -252,6 +254,40 @@ export function setAvatar(id: string, avatar: string | undefined): void {
   const p = all.find((x) => x.id === id)
   if (p) {
     p.avatar = avatar
+    saveProfiles(all)
+  }
+}
+
+export function setAvatarUrl(id: string, url: string | undefined): void {
+  const all = getProfiles()
+  const p = all.find((x) => x.id === id)
+  if (p) {
+    p.avatarUrl = url
+    saveProfiles(all)
+  }
+}
+
+// Change a profile's Minecraft version. Clears the cached install result and loader build so the
+// next launch re-installs the base game (+ picks a fresh loader build) for the new version.
+export function setProfileVersion(id: string, mcVersion: string): void {
+  const all = getProfiles()
+  const p = all.find((x) => x.id === id)
+  if (p) {
+    p.mcVersion = mcVersion
+    p.loaderVersion = undefined
+    p.installed = false
+    p.versionId = undefined
+    p.javaPath = undefined
+    saveProfiles(all)
+  }
+}
+
+// Per-profile RAM override (MB). Pass undefined to clear it and fall back to the global setting.
+export function setProfileMemory(id: string, mb: number | undefined): void {
+  const all = getProfiles()
+  const p = all.find((x) => x.id === id)
+  if (p) {
+    p.maxMemory = mb
     saveProfiles(all)
   }
 }

@@ -34,7 +34,7 @@ export function ModpackDetail({
 
   const install = async (): Promise<void> => {
     setInstalling(true)
-    const r = await window.beacon.importModpackFromModrinth(id)
+    const r = await window.beacon.importModpackFromModrinth(id, detail?.iconUrl)
     setInstalling(false)
     if (r.ok && r.id) onCreated({ id: r.id })
     else onError?.(r.error ?? t('installFailed'))

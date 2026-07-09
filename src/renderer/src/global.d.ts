@@ -1,4 +1,4 @@
-import type { Profile, Settings, ModHit, ContentType, ContentItem, ProjectDetail, AccountsState } from './types'
+import type { Profile, Settings, ModHit, ContentType, ContentSource, ContentItem, ProjectDetail, AccountsState } from './types'
 
 declare global {
   interface Window {
@@ -26,11 +26,16 @@ declare global {
       pickModpack(): Promise<string | null>
       importModpack(filePath: string): Promise<{ ok: boolean; id?: string; error?: string }>
       searchModpacks(query: string, sort: string, offset: number): Promise<{ ok: boolean; hits?: ModHit[]; total?: number; error?: string }>
-      importModpackFromModrinth(projectId: string): Promise<{ ok: boolean; id?: string; error?: string }>
+      importModpackFromModrinth(projectId: string, iconUrl?: string): Promise<{ ok: boolean; id?: string; error?: string }>
       getPathForFile(file: File): string
       imageDataUrl(path: string): Promise<string | null>
       writeClipboard(text: string): Promise<boolean>
       renameProfile(id: string, name: string): Promise<boolean>
+      setProfileAvatar(id: string, avatarSrc: string | null): Promise<{ ok: boolean; error?: string }>
+      compatibleVersions(id: string): Promise<{ ok: boolean; versions?: string[] | null; unresolved?: string[]; error?: string }>
+      setProfileVersion(id: string, mcVersion: string): Promise<{ ok: boolean; migrated?: string[]; failed?: string[]; error?: string }>
+      setProfileMemory(id: string, mb: number | null): Promise<{ ok: boolean }>
+      repairProfile(id: string): Promise<{ ok: boolean; removed?: string[]; error?: string }>
       reorderProfiles(ids: string[]): Promise<boolean>
       deleteProfile(id: string): Promise<boolean>
       openProfileFolder(id: string): Promise<boolean>
@@ -57,7 +62,8 @@ declare global {
         loader: string,
         sort: string,
         type: ContentType,
-        offset: number
+        offset: number,
+        source?: ContentSource
       ): Promise<{ ok: boolean; hits?: ModHit[]; total?: number; error?: string }>
       installContent(
         profileId: string,
@@ -65,11 +71,18 @@ declare global {
         mcVersion: string,
         loader: string,
         type: ContentType,
-        hit?: { title?: string; author?: string; iconUrl?: string; slug?: string }
-      ): Promise<{ ok: boolean; filename?: string; error?: string }>
+        hit?: { title?: string; author?: string; iconUrl?: string; slug?: string },
+        source?: ContentSource
+      ): Promise<{
+        ok: boolean
+        filename?: string
+        installedDeps?: { name: string; title?: string }[]
+        incompatible?: string[]
+        error?: string
+      }>
       listContent(profileId: string, type: ContentType): Promise<ContentItem[]>
       enrichContent(profileId: string, type: ContentType): Promise<ContentItem[]>
-      getProject(idOrSlug: string): Promise<{ ok: boolean; project?: ProjectDetail | null; error?: string }>
+      getProject(idOrSlug: string, source?: ContentSource): Promise<{ ok: boolean; project?: ProjectDetail | null; error?: string }>
       checkContentUpdates(profileId: string, type: ContentType): Promise<Record<string, string>>
       updateContent(profileId: string, type: ContentType, name: string): Promise<{ ok: boolean; filename?: string; error?: string }>
       toggleContent(profileId: string, type: ContentType, name: string, enable: boolean): Promise<boolean>

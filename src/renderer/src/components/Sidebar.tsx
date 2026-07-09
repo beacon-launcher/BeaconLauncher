@@ -1,5 +1,4 @@
 import '../styles/Sidebar.css'
-import { useRef } from 'react'
 import type { Profile } from '../types'
 import { t } from '../i18n'
 import { Avatar, GearIcon } from './ui'
@@ -9,23 +8,16 @@ export function Sidebar({
   selectedId,
   pstates,
   sidebarWidth,
+  collapsed,
   onResize,
   onSelect,
   onContextMenu,
-  dragId,
-  setDragId,
-  drop,
   onNewProfile,
   onSettings,
   packDragOver,
   setPackDragOver,
   importPack,
   dropPack,
-  renamingId,
-  renameValue,
-  setRenameValue,
-  commitRename,
-  cancelRename,
   onHome,
   atHome
 }: {
@@ -33,33 +25,27 @@ export function Sidebar({
   selectedId: string | null
   pstates: Record<string, { status: string; percent: number; text: string }>
   sidebarWidth: number
+  collapsed: boolean
   onResize: (e: React.MouseEvent) => void
   onSelect: (id: string) => void
   onContextMenu: (e: React.MouseEvent, id: string) => void
-  dragId: string | null
-  setDragId: (id: string | null) => void
-  drop: (targetId: string) => void
   onNewProfile: () => void
   onSettings: () => void
   packDragOver: boolean
   setPackDragOver: (v: boolean) => void
   importPack: () => void
   dropPack: (e: React.DragEvent) => void
-  renamingId: string | null
-  renameValue: string
-  setRenameValue: (v: string) => void
-  commitRename: () => void
-  cancelRename: () => void
   onHome: () => void
   atHome: boolean
 }): React.JSX.Element {
-  // Escape sets renamingId to null, which unmounts the input and fires onBlur → commitRename.
-  // This flag tells that blur to skip the commit so Escape truly cancels.
-  const cancelling = useRef(false)
   return (
     <>
-      <aside className="sidebar" style={{ width: sidebarWidth }}>
-        <button className={`profile home-item ${atHome ? 'active' : ''}`} onClick={onHome}>
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ width: sidebarWidth }}>
+        <button
+          className={`profile home-item ${atHome ? 'active' : ''}`}
+          onClick={onHome}
+          data-tip={collapsed ? t('home') : undefined}
+        >
           <span className="home-ico">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
@@ -71,42 +57,14 @@ export function Sidebar({
           {profiles.map((p) => (
             <div
               key={p.id}
-              className={`profile ${p.id === selectedId ? 'active' : ''} ${dragId === p.id ? 'dragging' : ''}`}
-              draggable={renamingId !== p.id}
-              onDragStart={() => setDragId(p.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => drop(p.id)}
-              onDragEnd={() => setDragId(null)}
-              onClick={() => renamingId !== p.id && onSelect(p.id)}
+              className={`profile ${p.id === selectedId ? 'active' : ''}`}
+              onClick={() => onSelect(p.id)}
               onContextMenu={(e) => onContextMenu(e, p.id)}
+              data-tip={collapsed ? p.name : undefined}
             >
               <Avatar profile={p} size={34} />
               <div className="p-text">
-                {renamingId === p.id ? (
-                  <input
-                    className="p-name-input"
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onBlur={() => {
-                      if (cancelling.current) {
-                        cancelling.current = false
-                        return
-                      }
-                      commitRename()
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitRename()
-                      if (e.key === 'Escape') {
-                        cancelling.current = true
-                        cancelRename()
-                      }
-                    }}
-                  />
-                ) : (
-                  <span className="p-name">{p.name}</span>
-                )}
+                <span className="p-name">{p.name}</span>
                 <span className="p-meta">
                   {pstates[p.id]?.status === 'installing'
                     ? `${t('installingPercent')} ${pstates[p.id].percent}%`

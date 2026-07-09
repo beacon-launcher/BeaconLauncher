@@ -395,6 +395,13 @@
   opacity: 1;
 }
 
+/* Browse row for a mod that's installed but has a newer build available — actionable, accent-coloured. */
+.install.update {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .inst-label {
   font-size: 10.5px;
   text-transform: uppercase;
@@ -436,7 +443,7 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .ctabs {
@@ -447,7 +454,16 @@
   border-radius: 10px;
   padding: 3px;
   gap: 2px;
+  /* Stay on a single row: yield width and scroll the tabs when cramped, rather than wrapping the
+     whole topbar to a second line. The action buttons keep their size (flex-shrink: 0 below). */
+  min-width: 0;
   max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ctabs::-webkit-scrollbar {
+  display: none;
 }
 
 .ctab-slider {
@@ -571,10 +587,11 @@
   display: flex;
   align-items: center;
   gap: 13px;
+  min-height: 72px; /* card-like footprint without the empty height of a full browse card */
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: var(--r);
+  padding: 12px 14px;
   transition: background 0.12s, border-color 0.12s;
 }
 
@@ -587,8 +604,8 @@
 }
 
 .crow-icon {
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border-radius: 9px;
   flex-shrink: 0;
   object-fit: cover;
@@ -869,6 +886,66 @@
 .content-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Compact icon buttons for the topbar actions (Update all / Browse / Add manually) — keeps the
+   whole row on one line. Labels live in the hover tooltip (data-tip). */
+.action-ico {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 9px;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.action-ico:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.action-ico.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.action-ico.accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.action-ico:disabled {
+  opacity: 0.6;
+}
+
+.action-ico .spinner {
+  width: 16px;
+  height: 16px;
+}
+
+/* Count badge on the Update-all button. */
+.action-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #08090c;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* Persistent bottom footer of the mods panel — counts on the left, pager on the right. */

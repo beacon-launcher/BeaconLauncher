@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Account } from '../types'
 import { randomUsername } from '../helpers'
 import { Modal } from './Modal'
+import { ConfirmModal } from './ConfirmModal'
 import { Spinner } from './ui'
 import { t } from '../i18n'
 
@@ -26,6 +27,7 @@ export function AccountsModal({
   onClose: () => void
 }): React.JSX.Element {
   const [newNick, setNewNick] = useState('')
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const addOffline = (): void => {
     const n = newNick.trim()
     if (!n) return
@@ -33,6 +35,7 @@ export function AccountsModal({
     setNewNick('')
   }
   return (
+    <>
     <Modal title={t('accounts')} onClose={onClose}>
       <div className="accounts">
         <div className="acc-add-section">
@@ -94,7 +97,7 @@ export function AccountsModal({
                   </span>
                 </button>
                 <div className="acc-actions">
-                  <button className="plain-icon danger" data-tip={t('remove')} onClick={() => onRemove(a.id)}>
+                  <button className="plain-icon danger" data-tip={t('remove')} onClick={() => setConfirmRemove(a.id)}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
                     </svg>
@@ -106,5 +109,19 @@ export function AccountsModal({
         </div>
       </div>
     </Modal>
+    {confirmRemove && (
+      <ConfirmModal
+        title={t('removeAccountTitle')}
+        message={t('confirmDeleteAccount')}
+        confirmLabel={t('remove')}
+        danger
+        onConfirm={() => {
+          onRemove(confirmRemove)
+          setConfirmRemove(null)
+        }}
+        onClose={() => setConfirmRemove(null)}
+      />
+    )}
+    </>
   )
 }

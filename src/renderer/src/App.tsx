@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Account, AccountsState, Profile, Settings } from './types'
-import { cleanConsole, CONSOLE_ART_KEY, JAVA_KEYS } from './helpers'
+import { JAVA_KEYS } from './helpers'
 import { t, setLanguage } from './i18n'
 import { Tooltip } from './components/Modal'
 import { Header } from './components/Header'
@@ -10,6 +10,8 @@ import { InstallsPanel } from './components/InstallsPanel'
 import { AccountsModal } from './components/AccountsModal'
 import { SettingsModal } from './components/SettingsModal'
 import { CreateProfileModal } from './components/CreateProfileModal'
+import { ConfirmModal } from './components/ConfirmModal'
+import { ConsolePage } from './components/ConsolePage'
 import { HomeView } from './components/HomeView'
 
 type Phase = 'idle' | 'install' | 'running'
@@ -37,19 +39,25 @@ export default function App(): React.JSX.Element {
   const [percent, setPercent] = useState<number | null>(null)
   const [log, setLog] = useState('')
   const [showLog, setShowLog] = useState(false)
+  const SIDEBAR_ICON = 74 // collapsed icon-only width
   const SIDEBAR_MIN = 220
   const SIDEBAR_MAX = 360
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const v = Number(localStorage.getItem('beacon.sidebarWidth'))
-    return v >= SIDEBAR_MIN && v <= SIDEBAR_MAX ? v : 220
+    return v === SIDEBAR_ICON || (v >= SIDEBAR_MIN && v <= SIDEBAR_MAX) ? v : 220
   })
+  const collapsed = sidebarWidth <= SIDEBAR_ICON
   const [resizing, setResizing] = useState(false)
   const startResize = (e: React.MouseEvent): void => {
     e.preventDefault()
     setResizing(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-    const onMove = (ev: MouseEvent): void => setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX)))
+    // Drag well past the min → snap to the collapsed icon-only rail; otherwise clamp to the normal
+    // expanded range. The gap between SIDEBAR_ICON and SIDEBAR_MIN is a dead zone so there's no
+    // awkward half-width where labels get clipped.
+    const onMove = (ev: MouseEvent): void =>
+      setSidebarWidth(ev.clientX < SIDEBAR_MIN - 45 ? SIDEBAR_ICON : Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX)))
     const onUp = (): void => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
@@ -66,10 +74,8 @@ export default function App(): React.JSX.Element {
   }
   const [packDragOver, setPackDragOver] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
-  const [dragId, setDragId] = useState<string | null>(null)
+  const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<{ id: string; name: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [toastCopied, setToastCopied] = useState(false)
   const [maxRam, setMaxRam] = useState(8192)
@@ -205,7 +211,12 @@ export default function App(): React.JSX.Element {
       }
     })
     const offProfilesChanged = window.beacon.onProfilesChanged(() => {
-      window.beacon.listProfiles().then(setProfiles)
+      window.beacon.listProfiles().then((ps) => {
+        setProfiles(ps)
+        // If the selected profile vanished (e.g. a cancelled install/import removed it), fall back
+        // to Home instead of leaving a dangling selection pointing at a deleted profile.
+        setSelectedId((cur) => (cur && !ps.some((p) => p.id === cur) ? null : cur))
+      })
     })
     window.beacon.appVersion().then(setAppVersion)
     const offUpdate = window.beacon.onUpdateStatus(setUpdate)
@@ -282,28 +293,6 @@ export default function App(): React.JSX.Element {
     else if (!ps.some((p) => p.id === selectedId)) setSelectedId(ps[0]?.id ?? null)
   }
 
-  const commitRename = async (): Promise<void> => {
-    // Ignore an empty/whitespace name (e.g. field cleared then clicked away) — keep the old name.
-    if (renamingId && renameValue.trim()) {
-      await window.beacon.renameProfile(renamingId, renameValue.trim())
-      await refreshProfiles()
-    }
-    setRenamingId(null)
-  }
-  // Escape: leave edit mode without saving.
-  const cancelRename = (): void => setRenamingId(null)
-
-  const drop = async (targetId: string): Promise<void> => {
-    if (!dragId || dragId === targetId) return setDragId(null)
-    const ids = profiles.map((p) => p.id)
-    const fi = ids.indexOf(dragId)
-    const ti = ids.indexOf(targetId)
-    ids.splice(ti, 0, ids.splice(fi, 1)[0])
-    setProfiles(ids.map((id) => profiles.find((p) => p.id === id)!).filter(Boolean))
-    await window.beacon.reorderProfiles(ids)
-    setDragId(null)
-  }
-
   const busy = !!runningProfile
 
   const saveSettings = (s: Settings): void => {
@@ -374,7 +363,9 @@ export default function App(): React.JSX.Element {
   }
 
   const handleSidebarSelect = (id: string): void => {
-    pushNav(id === selectedId ? null : id)
+    // Re-clicking the already-open profile should do nothing (don't toggle back to Home).
+    if (id === selectedId) return
+    pushNav(id)
   }
 
   return (
@@ -402,26 +393,19 @@ export default function App(): React.JSX.Element {
           selectedId={selectedId}
           pstates={pstates}
           sidebarWidth={sidebarWidth}
+          collapsed={collapsed}
           onResize={startResize}
           onSelect={handleSidebarSelect}
           onContextMenu={(e, id) => {
             e.preventDefault()
             setMenu({ x: e.clientX, y: e.clientY, id })
           }}
-          dragId={dragId}
-          setDragId={setDragId}
-          drop={drop}
           onNewProfile={() => setCreating(true)}
           onSettings={() => { setShowLog(false); setShowSettings(true) }}
           packDragOver={packDragOver}
           setPackDragOver={setPackDragOver}
           importPack={importPack}
           dropPack={dropPack}
-          renamingId={renamingId}
-          renameValue={renameValue}
-          setRenameValue={setRenameValue}
-          commitRename={commitRename}
-          cancelRename={cancelRename}
           onHome={() => pushNav(null)}
           atHome={selectedId === null}
         />
@@ -437,9 +421,10 @@ export default function App(): React.JSX.Element {
             onStop={() => window.beacon.stop()}
             onCancel={() => cancelInstall(selected.id)}
             onError={setToast}
-            onRename={async (name) => {
-              await window.beacon.renameProfile(selected.id, name)
-              await refreshProfiles(selected.id)
+            onRefresh={() => refreshProfiles(selected.id)}
+            onDelete={async () => {
+              await del(selected.id)
+              pushNav(null)
             }}
             onFooter={setFooter}
             gotoRef={footerGoto}
@@ -528,31 +513,40 @@ export default function App(): React.JSX.Element {
           )}
         </footer>
 
-        {showLog && (
-          <div className="console-page">
-            <pre className="console-body">{cleanConsole(log) || t(CONSOLE_ART_KEY)}</pre>
-          </div>
-        )}
+        {showLog && <ConsolePage log={log} />}
       </main>
       </div>
 
       {menu && (
         <div className="ctx" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => { window.beacon.openProfileFolder(menu.id); setMenu(null) }}>{t('openFolder')}</button>
           <button
+            className="danger"
             onClick={() => {
               const p = profiles.find((x) => x.id === menu.id)
-              setRenamingId(menu.id)
-              setRenameValue(p?.name ?? '')
+              setConfirmDeleteProfile({ id: menu.id, name: p?.name ?? '' })
               setMenu(null)
             }}
           >
-            {t('rename')}
-          </button>
-          <button onClick={() => { window.beacon.openProfileFolder(menu.id); setMenu(null) }}>{t('openFolder')}</button>
-          <button className="danger" onClick={() => { del(menu.id); setMenu(null) }}>
             {t('delete')}
           </button>
         </div>
+      )}
+
+      {confirmDeleteProfile && (
+        <ConfirmModal
+          title={t('deleteProfile')}
+          message={t('confirmDeleteProfile')}
+          confirmLabel={t('deleteProfile')}
+          danger
+          onConfirm={async () => {
+            const id = confirmDeleteProfile.id
+            setConfirmDeleteProfile(null)
+            await del(id)
+            if (id === selectedId) pushNav(null)
+          }}
+          onClose={() => setConfirmDeleteProfile(null)}
+        />
       )}
 
       {toast && (

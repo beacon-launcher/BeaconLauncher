@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, clipboard } from 'electron'
 import { join, extname } from 'node:path'
-import { existsSync, copyFileSync, readFileSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, copyFileSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { totalmem } from 'node:os'
 import type { ChildProcess } from 'node:child_process'
 import './net' // sets a tuned global undici dispatcher for the main process's Modrinth fetches
@@ -90,8 +90,11 @@ function backgroundInstall(p: store.Profile): void {
     })
     .catch((e) => {
       if (isCancelled(e)) {
-        log.info('install', `background install cancelled: "${p.name}"`)
-        pstate(p.id, 'idle', 0, '')
+        // This profile only exists because the user was creating it — cancelling means they backed
+        // out, so drop the half-installed profile instead of leaving an empty stub behind.
+        log.info('install', `background install cancelled: "${p.name}" — removing profile`)
+        store.deleteProfile(p.id)
+        send('profilesChanged', null)
         return
       }
       log.error('install', `background install failed: "${p.name}" (${p.mcVersion} / ${p.loader}) — ${errMsg(e)}`)
@@ -113,14 +116,65 @@ function backgroundImport(p: store.Profile, filePath: string): void {
     })
     .catch((e) => {
       if (isCancelled(e)) {
-        log.info('import', `modpack import cancelled: "${p.name}"`)
-        pstate(p.id, 'idle', 0, '')
+        // The profile was created solely for this import — cancelling means abandon it, so remove
+        // the profile (and its partially-downloaded files) rather than leaving a broken pack.
+        log.info('import', `modpack import cancelled: "${p.name}" — removing profile`)
+        store.deleteProfile(p.id)
+        send('profilesChanged', null)
         return
       }
       log.error('import', `modpack import failed: "${p.name}" — ${errMsg(e)}`)
       pstate(p.id, 'error', 0, 'Import failed')
       send('toast', { text: `Import failed: ${errMsg(e)}` })
     })
+}
+
+// Change a profile's Minecraft version as a background install: migrate its Modrinth mods to the new
+// version, then re-install the base game (with progress), instead of blocking the settings dialog.
+function backgroundVersionChange(p: store.Profile, mcVersion: string): void {
+  pstate(p.id, 'installing', 0, 'Updating mods…')
+  log.info('version', `version change started: "${p.name}" → ${mcVersion}`)
+  ;(async () => {
+    const r = await mods.migrateModsToVersion(p.id, mcVersion)
+    store.setProfileVersion(p.id, mcVersion)
+    send('profilesChanged', null)
+    const profile = store.getProfile(p.id)
+    if (!profile) return
+    const ready = await installer.prepareInstall(profile, store.getSettings(), (percent, text) =>
+      pstate(p.id, 'installing', percent, text)
+    )
+    store.setInstallResult(p.id, ready.versionId, ready.java)
+    pstate(p.id, 'ready', 100, 'Ready')
+    log.info('version', `version change finished: "${p.name}" → ${mcVersion} (${r.migrated.length} mods moved, ${r.failed.length} skipped)`)
+    if (r.failed.length) send('toast', { text: `No build for ${mcVersion}, kept as-is: ${r.failed.join(', ')}` })
+  })().catch((e) => {
+    if (isCancelled(e)) {
+      pstate(p.id, 'idle', 0, '')
+      return
+    }
+    log.error('version', `version change failed: "${p.name}" — ${errMsg(e)}`)
+    pstate(p.id, 'error', 0, 'Update failed')
+    send('toast', { text: `Version change failed: ${errMsg(e)}` })
+  })
+}
+
+// Download a remote image (a modpack's Modrinth icon) into the avatars folder and set it as the
+// profile's avatar. Best-effort: any failure leaves the profile on its default generated avatar.
+async function saveProfileAvatarFromUrl(profileId: string, url: string): Promise<void> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return
+    mkdirSync(store.avatarsRoot(), { recursive: true })
+    const ext = (extname(new URL(url).pathname).toLowerCase() || '.png').slice(0, 5)
+    const dest = join(store.avatarsRoot(), `${profileId}${ext}`)
+    writeFileSync(dest, Buffer.from(await res.arrayBuffer()))
+    store.setAvatar(profileId, dest)
+    // Keep the public source URL too — Discord presence can only show images by URL, not the local
+    // file, so this is what lets the profile's avatar appear in Rich Presence.
+    store.setAvatarUrl(profileId, url)
+  } catch {
+    /* icon is optional — ignore network/write errors */
+  }
 }
 
 function createWindow(): void {
@@ -244,6 +298,56 @@ ipcMain.handle('profiles:rename', (_e, a: { id: string; name: string }) => {
   store.renameProfile(a.id, a.name)
   return true
 })
+// Set (or clear, when avatarSrc is null) an existing profile's avatar.
+ipcMain.handle('profiles:setAvatar', (_e, a: { id: string; avatarSrc: string | null }) => {
+  try {
+    if (a.avatarSrc) {
+      mkdirSync(store.avatarsRoot(), { recursive: true })
+      const ext = extname(a.avatarSrc).toLowerCase() || '.png'
+      const dest = join(store.avatarsRoot(), `${a.id}-${Date.now()}${ext}`)
+      copyFileSync(a.avatarSrc, dest)
+      store.setAvatar(a.id, dest)
+    } else {
+      store.setAvatar(a.id, undefined)
+    }
+    // A local avatar isn't a public URL, so clear any Discord-facing URL when the avatar changes.
+    store.setAvatarUrl(a.id, undefined)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
+// Minecraft versions this profile could switch to while keeping all its Modrinth mods.
+ipcMain.handle('content:compatibleVersions', async (_e, id: string) => {
+  try {
+    return { ok: true, ...(await mods.compatibleVersions(id)) }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
+// Per-profile RAM override (MB); null clears it back to the global setting.
+ipcMain.handle('profiles:setMemory', (_e, a: { id: string; mb: number | null }) => {
+  store.setProfileMemory(a.id, a.mb ?? undefined)
+  return { ok: true }
+})
+// Change a profile's Minecraft version: migrate its Modrinth mods to that version, then update the
+// profile (which also forces a base-game re-install on next launch).
+ipcMain.handle('profiles:setVersion', (_e, a: { id: string; mcVersion: string }) => {
+  const p = store.getProfile(a.id)
+  if (!p) return { ok: false, error: 'Profile not found' }
+  // Fire-and-forget: the version change runs as a background install with progress in the sidebar,
+  // so the settings dialog can close immediately instead of hanging on a long "Saving".
+  backgroundVersionChange(p, a.mcVersion)
+  return { ok: true }
+})
+// Repair a profile — currently removes duplicate mods left behind by a failed update/version change.
+ipcMain.handle('profiles:repair', async (_e, id: string) => {
+  try {
+    return { ok: true, ...(await mods.repairProfile(id)) }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+})
 ipcMain.handle('profiles:delete', (_e, id: string) => {
   store.deleteProfile(id)
   return true
@@ -366,12 +470,14 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
     }
 
     pstate(profile.id, 'launching', 100, 'Launching…')
-    child = await launchGame({ ...ready, settings, account })
+    child = await launchGame({ ...ready, settings, account, maxMemory: profile.maxMemory })
     const startedAt = Date.now()
     pstate(profile.id, 'running', 100, 'Running')
     log.info('game', `launched "${profile.name}" (${account?.licensed ? 'licensed' : 'offline'} as ${account?.name ?? '—'})`)
-    // Discord shows the profile only while it's actually running (Idling otherwise).
-    discord.setActivity({ details: 'Playing', state: profile.name })
+    // Discord shows the profile only while it's actually running (Idling otherwise). One line —
+    // "Playing <profile>" — with the profile's own avatar as the image when it has a public URL
+    // (modpack icons). Locally-picked avatars have no URL, so no image is shown for those.
+    discord.setActivity({ details: `Playing ${profile.name}`, imageUrl: profile.avatarUrl, imageText: profile.name })
     // Game stdout/stderr → both the in-app console and the log file (crash reports live here).
     child.stdout?.on('data', (d: Buffer) => {
       const s = d.toString()
@@ -443,11 +549,16 @@ ipcMain.handle('java:install', async (_e, major: number) => {
   }
 })
 
-// ── content: mods / resource packs / data packs / shaders (Modrinth) ─────────
+// ── content: mods / resource packs / data packs / shaders (Modrinth + CurseForge) ─────────
 ipcMain.handle(
   'content:search',
-  async (_e, a: { query: string; mcVersion: string; loader: string; sort?: string; type: mods.ContentType; offset?: number }) => {
+  async (
+    _e,
+    a: { query: string; mcVersion: string; loader: string; sort?: string; type: mods.ContentType; offset?: number; source?: mods.Source }
+  ) => {
     try {
+      // CurseForge is disabled for now — always search Modrinth. (a.source is kept in the wire
+      // format so re-enabling CurseForge later needs no IPC change.)
       const r = await mods.searchModrinth(a.query, a.mcVersion, a.loader, a.sort, a.type, a.offset)
       return { ok: true, hits: r.hits, total: r.total }
     } catch (e) {
@@ -467,10 +578,12 @@ ipcMain.handle(
       loader: string
       type: mods.ContentType
       hit?: { title?: string; author?: string; iconUrl?: string; slug?: string }
+      source?: mods.Source
     }
   ) => {
     try {
-      return { ok: true, filename: await mods.installModrinth(a.profileId, a.id, a.mcVersion, a.loader, a.type, a.hit) }
+      const r = await mods.installContent(a.profileId, a.id, a.mcVersion, a.loader, a.type, a.hit, a.source)
+      return { ok: true, ...r }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -479,9 +592,12 @@ ipcMain.handle(
 
 ipcMain.handle('content:list', (_e, a: { profileId: string; type: mods.ContentType }) => mods.listContent(a.profileId, a.type))
 ipcMain.handle('content:enrich', (_e, a: { profileId: string; type: mods.ContentType }) => mods.enrichContent(a.profileId, a.type))
-ipcMain.handle('content:project', async (_e, idOrSlug: string) => {
+ipcMain.handle('content:project', async (_e, a: string | { idOrSlug: string; source?: mods.Source }) => {
   try {
-    return { ok: true, project: await mods.getProject(idOrSlug) }
+    // Back-compat: older callers pass a bare id string; newer ones pass { idOrSlug, source }.
+    const idOrSlug = typeof a === 'string' ? a : a.idOrSlug
+    const source = typeof a === 'string' ? 'modrinth' : a.source
+    return { ok: true, project: await mods.getProject(idOrSlug, source) }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
@@ -546,11 +662,14 @@ ipcMain.handle('modpack:search', async (_e, a: { query: string; sort?: string; o
 
 // Create a profile from a chosen Modrinth modpack: download its latest .mrpack, then import it
 // through the exact same path as a local .mrpack (readModpack → addProfile → backgroundImport).
-ipcMain.handle('modpack:importFromModrinth', async (_e, a: { projectId: string }) => {
+ipcMain.handle('modpack:importFromModrinth', async (_e, a: { projectId: string; iconUrl?: string }) => {
   try {
     const filePath = await mods.downloadModpackToTemp(a.projectId)
     const info = await modpack.readModpack(filePath)
     const p = store.addProfile(info.name, info.mcVersion, info.loader)
+    // Use the modpack's Modrinth icon as the profile avatar so imported packs aren't left with a
+    // blank/generated one. Best-effort — a failed icon download just falls back to the default.
+    if (a.iconUrl) await saveProfileAvatarFromUrl(p.id, a.iconUrl)
     backgroundImport(p, filePath)
     return { ok: true, id: p.id }
   } catch (e) {

@@ -65,10 +65,10 @@ export function ModpackBrowser({
     return () => onDetailBack?.(null)
   }, [detailId, onDetailBack])
 
-  const pick = async (id: string): Promise<void> => {
+  const pick = async (id: string, iconUrl?: string): Promise<void> => {
     if (importingId) return
     setImportingId(id)
-    const r = await window.beacon.importModpackFromModrinth(id)
+    const r = await window.beacon.importModpackFromModrinth(id, iconUrl)
     setImportingId(null)
     if (r.ok && r.id) onCreated({ id: r.id })
     else onError?.(r.error ?? t('installFailed'))
@@ -115,7 +115,7 @@ export function ModpackBrowser({
                 disabled={!!importingId}
                 onClick={(e) => {
                   e.stopPropagation()
-                  pick(h.id)
+                  pick(h.id, h.iconUrl)
                 }}
               >
                 {importingId === h.id ? <Spinner /> : null}

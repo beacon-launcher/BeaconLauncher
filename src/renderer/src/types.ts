@@ -11,6 +11,8 @@ export interface Profile {
   playtimeMs?: number
   dir?: string
   avatar?: string
+  avatarUrl?: string
+  maxMemory?: number
 }
 
 export interface Settings {
@@ -40,6 +42,9 @@ export interface AccountsState {
 
 export type ContentType = 'mod' | 'resourcepack' | 'datapack' | 'shader'
 
+// Which catalogue content is searched/installed from.
+export type ContentSource = 'modrinth' | 'curseforge'
+
 export interface ModHit {
   id: string
   title: string
@@ -50,6 +55,7 @@ export interface ModHit {
   iconUrl: string
   updated: string
   slug: string
+  source?: ContentSource
 }
 
 export interface ProjectDetail {
@@ -69,11 +75,14 @@ export interface ProjectDetail {
   wiki?: string
   discord?: string
   updated: string
+  origin?: ContentSource
+  website?: string
 }
 
 export interface ContentItem {
   name: string
   enabled: boolean
+  source?: 'modrinth' | 'local' | 'curseforge'
   projectId?: string
   slug?: string
   title?: string

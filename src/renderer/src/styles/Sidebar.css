@@ -73,6 +73,7 @@
   border-radius: 10px;
   padding: 9px 10px;
   color: var(--muted);
+  cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 
@@ -81,9 +82,16 @@
   color: var(--text);
 }
 
+/* Selected profile — same accent treatment as an active button (.seg-btn.on / .action-ico.on):
+   accent-tinted fill + a 1px accent ring (via inset shadow, so it doesn't shift layout). */
 .profile.active {
-  background: var(--card-hover);
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--text);
+}
+
+.profile.active:hover {
+  background-color: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .pill {
@@ -170,7 +178,18 @@
 
 .side-foot .new {
   flex: 1;
+  min-width: 0;
   margin-top: 0;
+}
+
+/* Keep footer button labels on a single line (e.g. the longer Russian "Новый профиль" /
+   "Импортировать модпак") — shrink/ellipsize instead of wrapping to two rows. */
+.side-foot .new .lbl,
+.import-btn .lbl {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .gear {
@@ -210,15 +229,6 @@
   background: var(--card);
 }
 
-/* ── Drag reorder ── */
-.profile.dragging {
-  opacity: 0.4;
-}
-
-.profile[draggable='true'] {
-  cursor: grab;
-}
-
 /* "Home" entry at the top of the profile list (same row style as a profile). */
 .home-item {
   width: 100%;
@@ -231,8 +241,6 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  background: var(--card);
   color: var(--muted);
   transition: color 0.12s;
 }
@@ -240,4 +248,72 @@
 .home-item:hover .home-ico,
 .home-item.active .home-ico {
   color: var(--text);
+}
+
+/* ── Collapsed (icon-only) rail ───────────────────────────────────────────────
+   Reached by dragging the divider past the minimum width. Everything textual is
+   hidden and every row centres its icon, so nothing ever overflows. */
+.sidebar.collapsed {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Hide the scroll rail in collapsed mode — otherwise it eats ~11px on the right and the icons
+   centre against the reduced width, looking shifted left. Content still scrolls with the wheel. */
+.sidebar.collapsed .profiles {
+  scrollbar-width: none;
+}
+
+.sidebar.collapsed .profiles::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar.collapsed .profile,
+.sidebar.collapsed .home-item {
+  justify-content: center;
+  gap: 0;
+  padding: 8px 0;
+}
+
+.sidebar.collapsed .p-text,
+.sidebar.collapsed .p-name,
+.sidebar.collapsed .lbl {
+  display: none;
+}
+
+/* There's no room for the New button and gear side by side — stack them. */
+.sidebar.collapsed .side-foot {
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Import / New / Settings mirror the collapsed profile rows: full-width, borderless, centred icon,
+   same 50px footprint + hover fill — so they read as part of the same icon rail, not tiny buttons. */
+.sidebar.collapsed .import-btn,
+.sidebar.collapsed .side-foot .new,
+.sidebar.collapsed .gear {
+  width: 100%;
+  height: auto;
+  min-height: 50px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  /* Override the New button's `flex: 1` so its height isn't governed by flex-basis in the column. */
+  flex: none;
+}
+
+.sidebar.collapsed .import-btn:hover,
+.sidebar.collapsed .side-foot .new:hover,
+.sidebar.collapsed .gear:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.sidebar.collapsed .import-btn svg,
+.sidebar.collapsed .side-foot .new svg,
+.sidebar.collapsed .gear svg {
+  width: 22px;
+  height: 22px;
 }

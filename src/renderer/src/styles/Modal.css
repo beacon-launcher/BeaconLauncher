@@ -75,3 +75,11 @@
   padding: 10px 18px;
   text-align: center;
 }
+
+/* Reusable confirmation-dialog message. */
+.confirm-msg {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+  font-size: 13.5px;
+}

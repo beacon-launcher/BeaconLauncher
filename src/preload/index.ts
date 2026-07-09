@@ -35,12 +35,18 @@ const api = {
   pickModpack: () => ipcRenderer.invoke('dialog:pickModpack'),
   importModpack: (filePath: string) => ipcRenderer.invoke('modpack:import', filePath),
   searchModpacks: (query: string, sort: string, offset: number) => ipcRenderer.invoke('modpack:search', { query, sort, offset }),
-  importModpackFromModrinth: (projectId: string) => ipcRenderer.invoke('modpack:importFromModrinth', { projectId }),
+  importModpackFromModrinth: (projectId: string, iconUrl?: string) =>
+    ipcRenderer.invoke('modpack:importFromModrinth', { projectId, iconUrl }),
   // Resolve the absolute path of a dropped File (Electron 43 removed File.path).
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   imageDataUrl: (path: string) => ipcRenderer.invoke('image:dataUrl', path),
   writeClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   renameProfile: (id: string, name: string) => ipcRenderer.invoke('profiles:rename', { id, name }),
+  setProfileAvatar: (id: string, avatarSrc: string | null) => ipcRenderer.invoke('profiles:setAvatar', { id, avatarSrc }),
+  compatibleVersions: (id: string) => ipcRenderer.invoke('content:compatibleVersions', id),
+  setProfileVersion: (id: string, mcVersion: string) => ipcRenderer.invoke('profiles:setVersion', { id, mcVersion }),
+  setProfileMemory: (id: string, mb: number | null) => ipcRenderer.invoke('profiles:setMemory', { id, mb }),
+  repairProfile: (id: string) => ipcRenderer.invoke('profiles:repair', id),
   reorderProfiles: (ids: string[]) => ipcRenderer.invoke('profiles:reorder', ids),
   deleteProfile: (id: string) => ipcRenderer.invoke('profiles:delete', id),
   openProfileFolder: (id: string) => ipcRenderer.invoke('profiles:openFolder', id),
@@ -76,19 +82,20 @@ const api = {
   stop: () => ipcRenderer.invoke('game:stop'),
   cancelInstall: (id: string) => ipcRenderer.invoke('install:cancel', id),
   // content (mods / resource packs / data packs / shaders)
-  searchContent: (query: string, mcVersion: string, loader: string, sort: string, type: string, offset: number) =>
-    ipcRenderer.invoke('content:search', { query, mcVersion, loader, sort, type, offset }),
+  searchContent: (query: string, mcVersion: string, loader: string, sort: string, type: string, offset: number, source?: string) =>
+    ipcRenderer.invoke('content:search', { query, mcVersion, loader, sort, type, offset, source }),
   installContent: (
     profileId: string,
     id: string,
     mcVersion: string,
     loader: string,
     type: string,
-    hit?: { title?: string; author?: string; iconUrl?: string; slug?: string }
-  ) => ipcRenderer.invoke('content:install', { profileId, id, mcVersion, loader, type, hit }),
+    hit?: { title?: string; author?: string; iconUrl?: string; slug?: string },
+    source?: string
+  ) => ipcRenderer.invoke('content:install', { profileId, id, mcVersion, loader, type, hit, source }),
   listContent: (profileId: string, type: string) => ipcRenderer.invoke('content:list', { profileId, type }),
   enrichContent: (profileId: string, type: string) => ipcRenderer.invoke('content:enrich', { profileId, type }),
-  getProject: (idOrSlug: string) => ipcRenderer.invoke('content:project', idOrSlug),
+  getProject: (idOrSlug: string, source?: string) => ipcRenderer.invoke('content:project', { idOrSlug, source }),
   checkContentUpdates: (profileId: string, type: string) => ipcRenderer.invoke('content:checkUpdates', { profileId, type }),
   updateContent: (profileId: string, type: string, name: string) => ipcRenderer.invoke('content:update', { profileId, type, name }),
   toggleContent: (profileId: string, type: string, name: string, enable: boolean) =>

@@ -41,18 +41,19 @@ export interface LaunchAccount {
 }
 
 /** Spawn the game. Everything it needs is already installed by the worker at this point. */
-export function launchGame(opts: {
+export async function launchGame(opts: {
   dir: string
   versionId: string
   java: string
   settings: Settings
   account?: LaunchAccount | null
+  maxMemory?: number // per-profile override; falls back to the global setting
 }): Promise<ChildProcess> {
   const { dir, versionId, java, settings, account } = opts
   // Name comes from the active account; fall back to the settings username if there's none.
   const name = (account?.name || settings.username || 'Player').trim() || 'Player'
   const licensed = !!(account?.licensed && account.uuid && account.accessToken)
-  return launch({
+  const child = await launch({
     gamePath: dir,
     resourcePath: sharedRoot(),
     javaPath: java,
@@ -62,6 +63,13 @@ export function launchGame(opts: {
     // 'msa' is what modern clients expect for a Microsoft session; @xmcl's types predate it,
     // so cast. Offline stays 'mojang' as before.
     userType: (licensed ? 'msa' : 'mojang') as 'mojang',
-    maxMemory: Math.max(512, Math.floor(settings.maxMemory) || 2048)
+    maxMemory: Math.max(512, Math.floor(opts.maxMemory || settings.maxMemory) || 2048),
+    // Detach the game so it outlives the launcher. On Windows, Electron puts child processes in a
+    // Job Object that is killed when the app quits — `detached` breaks the game out of that job so
+    // closing the launcher no longer closes Minecraft. `unref()` (below) then lets the launcher's
+    // event loop exit without waiting on the game.
+    extraExecOption: { detached: true }
   })
+  child.unref()
+  return child
 }

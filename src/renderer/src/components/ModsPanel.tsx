@@ -1,6 +1,6 @@
 import '../styles/Mods.css'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ContentType, ContentItem, ModHit, ProjectDetail, Profile } from '../types'
+import type { ContentType, ContentSource, ContentItem, ModHit, ProjectDetail, Profile } from '../types'
 import { tabsFor, PAGE, fmt, timeAgo } from '../helpers'
 import { Spinner, LoadingBar, Empty, ContentIcon, Toggle, Dropdown } from './ui'
 import { Markdown } from './Markdown'
@@ -36,6 +36,7 @@ export const ModsPanel = memo(function ModsPanel({
   const [dropping, setDropping] = useState(false)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('relevance')
+  const [source, setSource] = useState<ContentSource>('modrinth')
   const [hits, setHits] = useState<ModHit[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -121,6 +122,60 @@ export const ModsPanel = memo(function ModsPanel({
 
   const hasUpdates = Object.keys(updates).length > 0
 
+  // Browse cards must reflect what's actually installed on disk, not just what was installed this
+  // session. Key by `${source}:${projectId}` so a Modrinth id and a CurseForge id never collide;
+  // combined with `updates` (keyed by filename) this drives the Install / Installed / Update state.
+  const installedByProject = useMemo(() => {
+    const m = new Map<string, ContentItem>()
+    for (const it of items) if (it.projectId && it.source) m.set(`${it.source}:${it.projectId}`, it)
+    return m
+  }, [items])
+
+  // Surface an install's dependency/incompatibility outcome. Incompatible already-installed mods
+  // are a real warning (the game may refuse to launch); auto-installed required deps just show up
+  // in the list, so we only flag them when there was also a conflict worth reading about.
+  const notifyInstall = (r: { installedDeps?: { name: string; title?: string }[]; incompatible?: string[] }): void => {
+    if (r.incompatible?.length) onError(t('incompatibleWarning', { mods: r.incompatible.join(', ') }))
+  }
+
+  // The Install / Installed / Update button shared by the browse cards and the detail page.
+  const renderInstallButton = (id: string, onInstall: () => void, src: ContentSource = source): React.JSX.Element => {
+    const it = installedByProject.get(`${src}:${id}`)
+    const update = it ? updates[it.name] : undefined
+    const inProgress = busyId === id
+    const isUpdating = it != null && updatingName === it.name
+    if (it && update) {
+      return (
+        <button
+          className="install update"
+          data-tip={t('updateTo') + ' ' + update}
+          onClick={(e) => {
+            e.stopPropagation()
+            void doUpdate(it.name)
+          }}
+          disabled={isUpdating}
+        >
+          {isUpdating ? <Spinner /> : null}
+          {isUpdating ? t('updatingEllipsis') : t('update')}
+        </button>
+      )
+    }
+    const done = it != null || installedIds.has(id)
+    return (
+      <button
+        className={`install ${done ? 'done' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          onInstall()
+        }}
+        disabled={inProgress || done}
+      >
+        {inProgress ? <Spinner /> : null}
+        {done ? t('installed') : inProgress ? t('installingEllipsis') : t('install')}
+      </button>
+    )
+  }
+
   useEffect(() => {
     setType(tabsFor(profile.loader)[0].type)
     setView('content')
@@ -130,6 +185,7 @@ export const ModsPanel = memo(function ModsPanel({
     setFilter('')
     setPage(0)
     setUpdates({})
+    setSource('modrinth')
     setDetail(null)
     setDetailLoading(false)
   }, [profile.id])
@@ -149,9 +205,9 @@ export const ModsPanel = memo(function ModsPanel({
     return () => clearTimeout(id)
   }, [query])
 
-  const runSearch = async (q: string, s: string, ct: ContentType, p: number): Promise<void> => {
+  const runSearch = async (q: string, s: string, ct: ContentType, p: number, src: ContentSource = source): Promise<void> => {
     setLoading(true)
-    const r = await window.beacon.searchContent(q, profile.mcVersion, profile.loader, s, ct, p * PAGE)
+    const r = await window.beacon.searchContent(q, profile.mcVersion, profile.loader, s, ct, p * PAGE, src)
     setLoading(false)
     if (r.ok) {
       setHits(r.hits ?? [])
@@ -199,23 +255,27 @@ export const ModsPanel = memo(function ModsPanel({
 
   const install = async (h: ModHit): Promise<void> => {
     setBusyId(h.id)
-    const r = await window.beacon.installContent(profile.id, h.id, profile.mcVersion, profile.loader, type, {
-      title: h.title,
-      author: h.author,
-      iconUrl: h.iconUrl,
-      slug: h.slug
-    })
+    const r = await window.beacon.installContent(
+      profile.id,
+      h.id,
+      profile.mcVersion,
+      profile.loader,
+      type,
+      { title: h.title, author: h.author, iconUrl: h.iconUrl, slug: h.slug },
+      h.source ?? source
+    )
     setBusyId(null)
     if (r.ok) {
       setInstalledIds((s) => new Set(s).add(h.id))
       refreshItems()
+      notifyInstall(r)
     } else onError(r.error ?? t('installFailed'))
   }
 
-  const openDetail = async (idOrSlug: string): Promise<void> => {
+  const openDetail = async (idOrSlug: string, src: ContentSource = source): Promise<void> => {
     setDetail(null)
     setDetailLoading(true)
-    const r = await window.beacon.getProject(idOrSlug)
+    const r = await window.beacon.getProject(idOrSlug, src)
     setDetailLoading(false)
     if (r.ok && r.project) setDetail(r.project)
     else {
@@ -234,16 +294,20 @@ export const ModsPanel = memo(function ModsPanel({
   }, [inDetail, onDetailBack])
   const installById = async (d: ProjectDetail): Promise<void> => {
     setBusyId(d.id)
-    const r = await window.beacon.installContent(profile.id, d.id, profile.mcVersion, profile.loader, type, {
-      title: d.title,
-      author: d.author,
-      iconUrl: d.iconUrl,
-      slug: d.slug
-    })
+    const r = await window.beacon.installContent(
+      profile.id,
+      d.id,
+      profile.mcVersion,
+      profile.loader,
+      type,
+      { title: d.title, author: d.author, iconUrl: d.iconUrl, slug: d.slug },
+      d.origin ?? source
+    )
     setBusyId(null)
     if (r.ok) {
       setInstalledIds((s) => new Set(s).add(d.id))
       refreshItems()
+      notifyInstall(r)
     } else onError(r.error ?? t('installFailed'))
   }
 
@@ -282,27 +346,56 @@ export const ModsPanel = memo(function ModsPanel({
       {TabBar}
       <div className="content-actions">
         {view === 'content' && hasUpdates && (
-          <button className="ghost-btn accent" onClick={updateAll} disabled={updatingAll}>
-            {updatingAll ? <Spinner /> : null}
-            {updatingAll ? t('updatingEllipsis') : t('updateAll') + ' (' + Object.keys(updates).length + ')'}
+          <button
+            className="action-ico accent"
+            onClick={updateAll}
+            disabled={updatingAll}
+            data-tip={t('updateAll') + ' (' + Object.keys(updates).length + ')'}
+          >
+            {updatingAll ? (
+              <Spinner />
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M23 4v6h-6M1 20v-6h6" />
+                  <path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" />
+                </svg>
+                <span className="action-badge">{Object.keys(updates).length}</span>
+              </>
+            )}
           </button>
         )}
-        <button className={`ghost-btn ${view === 'browse' ? 'on' : ''}`} onClick={() => (view === 'browse' ? setView('content') : openBrowse())}>
-          {t('browse')}
+        <button
+          className={`action-ico ${view === 'browse' ? 'on' : ''}`}
+          onClick={() => (view === 'browse' ? setView('content') : openBrowse())}
+          data-tip={t('browse')}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M16 8l-2.5 5.5L8 16l2.5-5.5z" fill="currentColor" stroke="none" />
+          </svg>
         </button>
-        <button className="ghost-btn" onClick={() => window.beacon.openContentFolder(profile.id, type)}>
-          {t('addManually')}
+        <button
+          className="action-ico"
+          onClick={() => window.beacon.openContentFolder(profile.id, type)}
+          data-tip={t('addManually')}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9">
+            <path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <path d="M12 11v5M9.5 13.5h5" />
+          </svg>
         </button>
       </div>
     </div>
   )
 
   if (inDetail) {
-    const installed = detail ? installedIds.has(detail.id) : false
-    const busy = detail ? busyId === detail.id : false
     const links: { label: string; url?: string }[] = detail
       ? [
-          { label: t('modrinth'), url: `https://modrinth.com/project/${detail.slug}` },
+          {
+            label: detail.origin === 'curseforge' ? 'CurseForge' : t('modrinth'),
+            url: detail.website ?? (detail.origin === 'curseforge' ? undefined : `https://modrinth.com/project/${detail.slug}`)
+          },
           { label: t('source'), url: detail.source },
           { label: t('issues'), url: detail.issues },
           { label: t('wiki'), url: detail.wiki },
@@ -327,10 +420,7 @@ export const ModsPanel = memo(function ModsPanel({
                   {detail.updated && <span>{timeAgo(detail.updated)}</span>}
                 </div>
               </div>
-              <button className={`install ${installed ? 'done' : ''}`} onClick={() => installById(detail)} disabled={busy || installed}>
-                {busy ? <Spinner /> : null}
-                {installed ? t('installed') : busy ? t('installingEllipsis') : t('install')}
-              </button>
+              {renderInstallButton(detail.id, () => installById(detail), detail.origin ?? source)}
             </div>
             {detail.categories.length > 0 && (
               <div className="detail-tags">
@@ -400,15 +490,23 @@ export const ModsPanel = memo(function ModsPanel({
             filtered.map((it) => {
               const title = it.title || it.name
               const version = it.version || t('unknown')
-              const url = it.slug || it.projectId ? `https://modrinth.com/project/${it.slug || it.projectId}` : null
+              const isCf = it.source === 'curseforge'
+              const url = isCf
+                ? it.slug && type === 'mod'
+                  ? `https://www.curseforge.com/minecraft/mc-mods/${it.slug}`
+                  : null
+                : it.slug || it.projectId
+                  ? `https://modrinth.com/project/${it.slug || it.projectId}`
+                  : null
               const update = updates[it.name]
               const isUpdating = updatingName === it.name
-              const projectRef = it.slug || it.projectId
+              // For the in-app detail page: Modrinth accepts slug or id; CurseForge needs the numeric id.
+              const projectRef = isCf ? it.projectId : it.slug || it.projectId
               return (
                 <div className={`crow ${it.enabled ? '' : 'off'}`} key={it.name}>
                   <div
                     className={`crow-lead ${projectRef ? 'clickable' : ''}`}
-                    onClick={projectRef ? () => openDetail(projectRef) : undefined}
+                    onClick={projectRef ? () => openDetail(projectRef, isCf ? 'curseforge' : 'modrinth') : undefined}
                   >
                     <ContentIcon url={it.iconUrl} />
                     <div className="crow-main">
@@ -539,6 +637,8 @@ export const ModsPanel = memo(function ModsPanel({
             }}
           />
         </div>
+        {/* CurseForge is disabled for now — with only Modrinth there's no source picker to show.
+            Re-add a <Dropdown> here (options Modrinth / CurseForge) to bring it back. */}
         <Dropdown
           value={sort}
           onChange={(v) => {
@@ -559,38 +659,28 @@ export const ModsPanel = memo(function ModsPanel({
         {loading && <LoadingBar />}
         {!loading && hits.length === 0 && <Empty />}
         {!loading &&
-          hits.map((h) => {
-            const done = installedIds.has(h.id)
-            const inProgress = busyId === h.id
-            return (
-              <div className="card clickable" key={h.id} onClick={() => openDetail(h.slug || h.id)}>
-                {h.iconUrl ? <img src={h.iconUrl} alt="" /> : <span className="ph" />}
-                <div className="card-body">
-                  <div className="card-top">
-                    <span className="card-title">{h.title}</span>
-                    {h.author && <span className="by">{h.author}</span>}
-                  </div>
-                  <div className="card-desc">{h.description}</div>
-                  <div className="card-tags">
-                    <span className="tag">↓ {fmt(h.downloads)}</span>
-                    <span className="tag">♥ {fmt(h.follows)}</span>
-                    {h.updated && <span className="tag muted">{timeAgo(h.updated)}</span>}
-                  </div>
+          hits.map((h) => (
+            <div
+              className="card clickable"
+              key={h.id}
+              onClick={() => openDetail(h.source === 'curseforge' ? h.id : h.slug || h.id, h.source ?? source)}
+            >
+              {h.iconUrl ? <img src={h.iconUrl} alt="" /> : <span className="ph" />}
+              <div className="card-body">
+                <div className="card-top">
+                  <span className="card-title">{h.title}</span>
+                  {h.author && <span className="by">{h.author}</span>}
                 </div>
-                <button
-                  className={`install ${done ? 'done' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    install(h)
-                  }}
-                  disabled={inProgress || done}
-                >
-                  {inProgress ? <Spinner /> : null}
-                  {done ? t('installed') : inProgress ? t('installingEllipsis') : t('install')}
-                </button>
+                <div className="card-desc">{h.description}</div>
+                <div className="card-tags">
+                  <span className="tag">↓ {fmt(h.downloads)}</span>
+                  <span className="tag">♥ {fmt(h.follows)}</span>
+                  {h.updated && <span className="tag muted">{timeAgo(h.updated)}</span>}
+                </div>
               </div>
-            )
-          })}
+              {renderInstallButton(h.id, () => install(h), h.source ?? source)}
+            </div>
+          ))}
       </div>
     </div>
   )
