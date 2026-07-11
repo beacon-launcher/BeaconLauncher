@@ -13,6 +13,7 @@ import * as loaders from './loaders'
 import * as modpack from './modpack'
 import * as discord from './discord'
 import * as mods from './mods'
+import * as modcompat from './modcompat'
 import * as updater from './updater'
 import { log, logsDir } from './logger'
 
@@ -27,6 +28,9 @@ Menu.setApplicationMenu(null)
 
 let win: BrowserWindow | null = null
 let child: ChildProcess | null = null
+// Tail of the running game's output, scanned on exit for a Fabric "Incompatible mods found!" crash
+// so we can show the conflict modal instead of leaving the reason buried in the log. Reset per launch.
+let crashBuf = ''
 
 function iconPath(): string | undefined {
   for (const c of [join(app.getAppPath(), 'build', 'icon.png'), join(process.cwd(), 'build', 'icon.png')]) {
@@ -194,6 +198,27 @@ function createWindow(): void {
   })
   win.on('maximize', () => win?.webContents.send('winState', { maximized: true }))
   win.on('unmaximize', () => win?.webContents.send('winState', { maximized: false }))
+  // Mouse back/forward (the thumb buttons) arrive as a WM_APPCOMMAND on Windows — i.e. the main
+  // process 'app-command' event, NOT a renderer DOM mouse event — so we must handle them here and
+  // relay to the renderer, which runs the exact same nav as the top-bar arrows. preventDefault stops
+  // Electron's built-in webContents history navigation (which would reset the SPA and, as a side
+  // effect, wedge the Forward button as permanently disabled).
+  win.on('app-command', (e, cmd) => {
+    if (cmd === 'browser-backward') {
+      e.preventDefault()
+      win?.webContents.send('navBack')
+    } else if (cmd === 'browser-forward') {
+      e.preventDefault()
+      win?.webContents.send('navForward')
+    }
+  })
+  // macOS: the native two/three-finger trackpad swipe surfaces as the 'swipe' event (mouse thumb
+  // buttons on macOS already come through the renderer's DOM mouseup fallback). Swipe right = back,
+  // left = forward, matching the browser convention. Only fires on macOS; a no-op elsewhere.
+  win.on('swipe', (_e, direction) => {
+    if (direction === 'right') win?.webContents.send('navBack')
+    else if (direction === 'left') win?.webContents.send('navForward')
+  })
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -400,7 +425,11 @@ ipcMain.handle('loaders:versions', (_e, loader: string) => loaders.supportedVers
 ipcMain.handle('loaders:builds', (_e, a: { loader: string; mcVersion: string }) => loaders.loaderBuilds(a.loader, a.mcVersion))
 
 // ── launch ──────────────────────────────────────────────────────────────────
-ipcMain.handle('game:launch', async (_e, profileId: string) => {
+ipcMain.handle('game:launch', async (_e, arg: string | { profileId: string; ignoreConflicts?: boolean }) => {
+  // Back-compat: older callers passed a bare profileId string; the conflict modal passes an object
+  // with ignoreConflicts:true to launch past a detected conflict ("launch anyway").
+  const profileId = typeof arg === 'string' ? arg : arg.profileId
+  const ignoreConflicts = typeof arg === 'string' ? false : !!arg.ignoreConflicts
   // Only one game at a time. Background downloads are fine, but don't let a second game start.
   if (child) {
     const msg = 'A game is already running — stop it first.'
@@ -469,7 +498,26 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
       account = { name: active.name, licensed: false }
     }
 
+    // Pre-launch mod-compatibility gate (Fabric/Quilt): catch version-range conflicts like
+    // Sodium↔Iris BEFORE the loader crashes on them. On a hit, surface the conflict modal and stop —
+    // unless the user chose "launch anyway" from that modal (ignoreConflicts).
+    if (!ignoreConflicts) {
+      try {
+        const conflicts = await modcompat.checkConflicts(profile.id)
+        if (conflicts.length) {
+          log.info('launch', `blocked by ${conflicts.length} mod conflict(s): "${profile.name}"`)
+          send('modConflict', { profileId: profile.id, source: 'prelaunch', conflicts })
+          pstate(profile.id, 'ready', 100, 'Ready')
+          return { ok: false, error: 'mod-conflict' }
+        }
+      } catch (e) {
+        // The check must never block a launch on its own bug — log and proceed.
+        log.error('launch', `conflict check errored (ignored): ${errMsg(e)}`)
+      }
+    }
+
     pstate(profile.id, 'launching', 100, 'Launching…')
+    crashBuf = ''
     child = await launchGame({ ...ready, settings, account, maxMemory: profile.maxMemory })
     const startedAt = Date.now()
     pstate(profile.id, 'running', 100, 'Running')
@@ -479,22 +527,27 @@ ipcMain.handle('game:launch', async (_e, profileId: string) => {
     // (modpack icons). Locally-picked avatars have no URL, so no image is shown for those.
     discord.setActivity({ details: `Playing ${profile.name}`, imageUrl: profile.avatarUrl, imageText: profile.name })
     // Game stdout/stderr → both the in-app console and the log file (crash reports live here).
-    child.stdout?.on('data', (d: Buffer) => {
-      const s = d.toString()
+    const capture = (s: string): void => {
       send('log', s)
       log.raw(s)
-    })
-    child.stderr?.on('data', (d: Buffer) => {
-      const s = d.toString()
-      send('log', s)
-      log.raw(s)
-    })
+      // Keep a bounded tail for post-mortem crash parsing (Fabric prints the incompatibility block
+      // near the end). 20k chars comfortably covers the FormattedException + its details.
+      crashBuf = (crashBuf + s).slice(-20000)
+    }
+    child.stdout?.on('data', (d: Buffer) => capture(d.toString()))
+    child.stderr?.on('data', (d: Buffer) => capture(d.toString()))
     child.on('exit', (code) => {
       store.addPlaytime(profile.id, Date.now() - startedAt)
       log.info('game', `"${profile.name}" exited with code ${code ?? 0}`)
       pstate(profile.id, 'ready', 100, `Closed (exit ${code ?? 0})`)
       send('profilesChanged', null) // playtime updated → let the UI re-read profiles
       discord.setActivity({ details: 'Idling' })
+      // A non-zero exit that carries a Fabric mod-incompatibility crash → show the same conflict
+      // modal, now with the loader's exact "remove this mod" verdict (a precise disable candidate).
+      if (code) {
+        const conflict = modcompat.parseFabricCrash(crashBuf)
+        if (conflict) send('modConflict', { profileId: profile.id, source: 'crash', conflicts: [conflict] })
+      }
       child = null
     })
     return { ok: true }

@@ -1,4 +1,14 @@
-import type { Profile, Settings, ModHit, ContentType, ContentSource, ContentItem, ProjectDetail, AccountsState } from './types'
+import type {
+  Profile,
+  Settings,
+  ModHit,
+  ContentType,
+  ContentSource,
+  ContentItem,
+  ProjectDetail,
+  AccountsState,
+  ModConflictReport
+} from './types'
 
 declare global {
   interface Window {
@@ -53,7 +63,7 @@ declare global {
       listVersions(showSnapshots: boolean): Promise<{ id: string; type: string }[]>
       loaderVersions(loader: string): Promise<string[] | null>
       loaderBuilds(loader: string, mcVersion: string): Promise<{ version: string; stable: boolean }[]>
-      launch(profileId: string): Promise<{ ok: boolean; error?: string }>
+      launch(profileId: string, ignoreConflicts?: boolean): Promise<{ ok: boolean; error?: string }>
       stop(): Promise<boolean>
       cancelInstall(id: string): Promise<boolean>
       searchContent(
@@ -96,6 +106,9 @@ declare global {
       onProgress(cb: (p: { percent: number }) => void): () => void
       onLog(cb: (line: string) => void): () => void
       onToast(cb: (t: { text: string }) => void): () => void
+      onModConflict(cb: (r: ModConflictReport) => void): () => void
+      onNavBack(cb: () => void): () => void
+      onNavForward(cb: () => void): () => void
     }
   }
 }

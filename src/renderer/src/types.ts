@@ -90,3 +90,21 @@ export interface ContentItem {
   iconUrl?: string
   version?: string
 }
+
+// Mod-incompatibility report surfaced by the conflict modal (see main/modcompat.ts). `filename` is
+// the on-disk jar in the profile's mods folder — present ⇒ the modal can offer to disable that mod.
+export interface ConflictMod {
+  id: string
+  name: string
+  filename?: string
+}
+export interface Conflict {
+  kind: 'breaks' | 'version' | 'crash'
+  message: string
+  mods: ConflictMod[]
+}
+export interface ModConflictReport {
+  profileId: string
+  source: 'prelaunch' | 'crash'
+  conflicts: Conflict[]
+}

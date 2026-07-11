@@ -83,3 +83,32 @@
   line-height: 1.55;
   font-size: 13.5px;
 }
+
+/* Mod-conflict modal: one card per conflicting pair, with disable buttons. */
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.conflict-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2, rgba(255, 255, 255, 0.03));
+}
+.conflict-msg {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conflict-actions .play {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}

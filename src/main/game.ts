@@ -1,9 +1,22 @@
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import { getVersionList } from '@xmcl/installer'
 import { launch } from '@xmcl/core'
 import type { Settings } from './store'
 import { sharedRoot } from './store'
+
+// Windows only: prefer javaw.exe over a console java.exe so Discord recognises the process as
+// Minecraft (its game-detection database keys on javaw.exe) — that's what lets the in-game overlay
+// attach — and so no console window flashes on launch. Applies to already-cached installs (stored
+// as java.exe before this change) and to system-detected JDKs. Falls back to the given path if the
+// sibling javaw.exe isn't there. New downloads already resolve to javaw.exe (installer-worker.ts).
+function preferJavaw(javaPath: string): string {
+  if (process.platform !== 'win32' || basename(javaPath).toLowerCase() !== 'java.exe') return javaPath
+  const javaw = join(dirname(javaPath), 'javaw.exe')
+  return existsSync(javaw) ? javaw : javaPath
+}
 
 // The heavy work (downloading Minecraft + loader + Java) lives in the installer
 // utilityProcess (installer-worker.ts) so it never blocks the main thread. This module
@@ -56,7 +69,7 @@ export async function launchGame(opts: {
   const child = await launch({
     gamePath: dir,
     resourcePath: sharedRoot(),
-    javaPath: java,
+    javaPath: preferJavaw(java),
     version: versionId,
     gameProfile: licensed ? { id: account!.uuid!, name } : { id: offlineUuid(name), name },
     accessToken: licensed ? account!.accessToken! : '0',

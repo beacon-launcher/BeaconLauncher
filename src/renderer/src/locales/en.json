@@ -218,5 +218,9 @@
   "accentOrange": "Orange",
   "accentSky": "Sky",
   "accentPink": "Pink",
-  "accentYellow": "Yellow"
+  "accentYellow": "Yellow",
+  "modConflictTitle": "Mod conflict",
+  "modConflictIntro": "These mods can't run together — disable one to continue:",
+  "disableMod": "Disable {{name}}",
+  "launchAnyway": "Launch anyway"
 }

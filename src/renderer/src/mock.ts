@@ -287,6 +287,9 @@ export function installMock(): void {
     onProgress: () => () => {},
     onLog: () => () => {},
     onToast: () => () => {},
+    onModConflict: () => () => {},
+    onNavBack: () => () => {},
+    onNavForward: () => () => {},
     onWinState: () => () => {},
     onProfilesChanged: () => () => {},
     onProfileState: (cb: (s: PState) => void) => {

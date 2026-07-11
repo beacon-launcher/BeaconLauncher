@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Account, AccountsState, Profile, Settings } from './types'
+import type { Account, AccountsState, ModConflictReport, Profile, Settings } from './types'
 import { JAVA_KEYS } from './helpers'
 import { t, setLanguage } from './i18n'
 import { Tooltip } from './components/Modal'
@@ -11,6 +11,7 @@ import { AccountsModal } from './components/AccountsModal'
 import { SettingsModal } from './components/SettingsModal'
 import { CreateProfileModal } from './components/CreateProfileModal'
 import { ConfirmModal } from './components/ConfirmModal'
+import { ModConflictModal } from './components/ModConflictModal'
 import { ConsolePage } from './components/ConsolePage'
 import { HomeView } from './components/HomeView'
 
@@ -78,6 +79,7 @@ export default function App(): React.JSX.Element {
   const [confirmDeleteProfile, setConfirmDeleteProfile] = useState<{ id: string; name: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [toastCopied, setToastCopied] = useState(false)
+  const [conflict, setConflict] = useState<ModConflictReport | null>(null)
   const [maxRam, setMaxRam] = useState(8192)
   const [maximized, setMaximized] = useState(false)
   const [pstates, setPstates] = useState<Record<string, { status: string; percent: number; text: string }>>({})
@@ -153,6 +155,23 @@ export default function App(): React.JSX.Element {
     applyNav(s.list[s.idx + 1])
   }
 
+  // Mouse thumb-button / IPC navigation must run the SAME goBack/goForward as the top-bar arrows —
+  // including the current detailBack. The listeners below are registered once, so route through a
+  // ref that always points at this render's handlers (otherwise they'd be frozen to the first render
+  // and, e.g., never close an open mod detail the way the top Back arrow does).
+  const navActionsRef = useRef({ back: goBack, forward: goForward })
+  navActionsRef.current = { back: goBack, forward: goForward }
+  // The same physical press can surface as BOTH an app-command (IPC) and a DOM mouseup; collapse
+  // duplicates fired within 200ms so one press = one navigation.
+  const navGuardRef = useRef(0)
+  const triggerNav = useCallback((dir: 'back' | 'forward'): void => {
+    const now = Date.now()
+    if (now - navGuardRef.current < 200) return
+    navGuardRef.current = now
+    if (dir === 'back') navActionsRef.current.back()
+    else navActionsRef.current.forward()
+  }, [])
+
   useEffect(() => {
     window.beacon.listProfiles().then((ps) => {
       setProfiles(ps)
@@ -182,16 +201,21 @@ export default function App(): React.JSX.Element {
     }
     window.beacon.listAccounts().then(applyAccounts)
     const offAuthChanged = window.beacon.onAuthChanged(applyAccounts)
+    // DOM mouseup for the thumb buttons is the fallback path (Linux/macOS, and browsers where these
+    // fire) — on Windows the real signal comes via IPC (onNavBack/onNavForward) from the main
+    // process' app-command handler. triggerNav dedupes if both arrive for one press.
     const onMouse = (e: MouseEvent): void => {
       if (e.button === 3) {
         e.preventDefault()
-        goBack()
+        triggerNav('back')
       } else if (e.button === 4) {
         e.preventDefault()
-        goForward()
+        triggerNav('forward')
       }
     }
     window.addEventListener('mouseup', onMouse)
+    const offNavBack = window.beacon.onNavBack(() => triggerNav('back'))
+    const offNavForward = window.beacon.onNavForward(() => triggerNav('forward'))
     window.beacon.totalRam().then((mb) => setMaxRam(Math.max(2048, Math.floor(mb / 512) * 512)))
     const offStatus = window.beacon.onStatus((s) => {
       setStatus(s.text)
@@ -201,6 +225,7 @@ export default function App(): React.JSX.Element {
     const offProgress = window.beacon.onProgress((p) => setPercent(p.percent))
     const offLog = window.beacon.onLog((line) => setLog((prev) => (prev + line).slice(-40000)))
     const offToast = window.beacon.onToast((t) => setToast(t.text))
+    const offConflict = window.beacon.onModConflict((r) => setConflict(r))
     const offWinState = window.beacon.onWinState((s) => setMaximized(s.maximized))
     const offPState = window.beacon.onProfileState((s) => {
       setPstates((m) => ({ ...m, [s.id]: { status: s.status, percent: s.percent, text: s.text } }))
@@ -225,11 +250,14 @@ export default function App(): React.JSX.Element {
       offProgress()
       offLog()
       offToast()
+      offConflict()
       offWinState()
       offPState()
       offProfilesChanged()
       offUpdate()
       offAuthChanged()
+      offNavBack()
+      offNavForward()
       window.removeEventListener('mouseup', onMouse)
     }
   }, [])
@@ -325,7 +353,27 @@ export default function App(): React.JSX.Element {
   const play = async (): Promise<void> => {
     if (!selected) return
     const r = await window.beacon.launch(selected.id)
-    if (!r.ok && r.error) setToast(r.error)
+    // 'mod-conflict' is surfaced by the conflict modal (via the onModConflict event), not a toast.
+    if (!r.ok && r.error && r.error !== 'mod-conflict') setToast(r.error)
+  }
+
+  // Disable one of the conflicting mods, then retry the launch (which re-runs the compat check, so
+  // any remaining conflict re-opens the modal). Used by the mod-conflict modal.
+  const disableConflictingMod = async (filename: string): Promise<void> => {
+    if (!conflict) return
+    const { profileId } = conflict
+    setConflict(null)
+    await window.beacon.toggleContent(profileId, 'mod', filename, false)
+    const r = await window.beacon.launch(profileId)
+    if (!r.ok && r.error && r.error !== 'mod-conflict') setToast(r.error)
+  }
+  // "Launch anyway" — bypass the pre-launch check (in case it was over-eager).
+  const launchAnyway = async (): Promise<void> => {
+    if (!conflict) return
+    const { profileId } = conflict
+    setConflict(null)
+    const r = await window.beacon.launch(profileId, true)
+    if (!r.ok && r.error && r.error !== 'mod-conflict') setToast(r.error)
   }
 
   const del = async (id: string): Promise<void> => {
@@ -546,6 +594,15 @@ export default function App(): React.JSX.Element {
             if (id === selectedId) pushNav(null)
           }}
           onClose={() => setConfirmDeleteProfile(null)}
+        />
+      )}
+
+      {conflict && (
+        <ModConflictModal
+          report={conflict}
+          onDisable={disableConflictingMod}
+          onLaunchAnyway={launchAnyway}
+          onClose={() => setConflict(null)}
         />
       )}
 

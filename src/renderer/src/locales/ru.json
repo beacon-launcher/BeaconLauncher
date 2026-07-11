@@ -224,5 +224,9 @@
   "accentOrange": "Оранжевый",
   "accentSky": "Голубой",
   "accentPink": "Розовый",
-  "accentYellow": "Жёлтый"
+  "accentYellow": "Жёлтый",
+  "modConflictTitle": "Конфликт модов",
+  "modConflictIntro": "Эти моды не могут работать вместе — отключите один, чтобы продолжить:",
+  "disableMod": "Отключить {{name}}",
+  "launchAnyway": "Всё равно запустить"
 }

@@ -78,7 +78,8 @@ const api = {
   loaderVersions: (loader: string) => ipcRenderer.invoke('loaders:versions', loader),
   loaderBuilds: (loader: string, mcVersion: string) => ipcRenderer.invoke('loaders:builds', { loader, mcVersion }),
   // launch
-  launch: (profileId: string) => ipcRenderer.invoke('game:launch', profileId),
+  launch: (profileId: string, ignoreConflicts?: boolean) =>
+    ipcRenderer.invoke('game:launch', { profileId, ignoreConflicts }),
   stop: () => ipcRenderer.invoke('game:stop'),
   cancelInstall: (id: string) => ipcRenderer.invoke('install:cancel', id),
   // content (mods / resource packs / data packs / shaders)
@@ -127,6 +128,22 @@ const api = {
     const l = (_e: unknown, t: { text: string }) => cb(t)
     ipcRenderer.on('toast', l)
     return () => ipcRenderer.removeListener('toast', l)
+  },
+  onModConflict: (cb: (r: unknown) => void) => {
+    const l = (_e: unknown, r: unknown) => cb(r)
+    ipcRenderer.on('modConflict', l)
+    return () => ipcRenderer.removeListener('modConflict', l)
+  },
+  // Mouse thumb-button navigation, relayed from the main process' app-command handler.
+  onNavBack: (cb: () => void) => {
+    const l = (): void => cb()
+    ipcRenderer.on('navBack', l)
+    return () => ipcRenderer.removeListener('navBack', l)
+  },
+  onNavForward: (cb: () => void) => {
+    const l = (): void => cb()
+    ipcRenderer.on('navForward', l)
+    return () => ipcRenderer.removeListener('navForward', l)
   }
 }
 

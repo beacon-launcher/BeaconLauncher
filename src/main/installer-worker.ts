@@ -185,7 +185,13 @@ const COMPONENT_FOR_MAJOR: Record<number, string> = {
 }
 
 function javaExe(dest: string): string {
-  if (process.platform === 'win32') return join(dest, 'bin', 'java.exe')
+  // Windows: use javaw.exe (GUI subsystem, no console) rather than java.exe. Two reasons:
+  //  • Discord's game detection matches Minecraft against `javaw.exe` (what the official + every
+  //    major third-party launcher spawns) — run java.exe and Discord never registers the game, so
+  //    the in-game overlay can't attach. See also preferJavaw() in game.ts for cached installs.
+  //  • No stray console window on a detached launch. Piped stdout/stderr still work (the subsystem
+  //    flag only governs whether a console is auto-allocated), so crash-log capture is unaffected.
+  if (process.platform === 'win32') return join(dest, 'bin', 'javaw.exe')
   if (process.platform === 'darwin') return join(dest, 'jre.bundle', 'Contents', 'Home', 'bin', 'java')
   return join(dest, 'bin', 'java')
 }
